@@ -2,10 +2,11 @@
 
 ## Current state
 
-- Active node: none
-- Product code: not started
+- Active node: four-area execution setup
+- Product code: deterministic baseline present on `origin/main`; checklist evidence still needs reconciliation
 - Scope: operational planner defined in `docs/product-specs/MVP.md`
 - Remote repository: `https://github.com/Eduardo-Salvador/40safras-open-ai-hackathon`
+- Branch plan: `docs/exec-plans/branches/README.md`
 
 ## Core outcome
 
@@ -77,7 +78,10 @@ have higher value after core freeze.
 
 | Task | Agent/person | Paths | Started | Released |
 |---|---|---|---|---|
-| - | - | - | - | - |
+| K0/K1/S1/S2 + integration | `Eduarco` branch | contracts, manifests/configs, execution docs | after `main` sync | - |
+| D1/E1/E2 | `Murilo` branch | data, deterministic engine and domain APIs | after S1/S2 freeze | - |
+| A1/O1 | `Pedro` branch | OpenAI, Realtime, prompts and AI APIs | after S1/S2 freeze | - |
+| F1/F2 | `Vitor` branch | UI, global styles, components, sharing and assets | after S1/S2 freeze | - |
 
 ## Decision log
 
