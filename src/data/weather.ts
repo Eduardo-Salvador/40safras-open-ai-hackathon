@@ -63,6 +63,8 @@ export function describeWeatherCode(code: number | null): WeatherCondition {
 }
 
 const valueAt = (values: Array<number | null>, index: number) => values[index] ?? null;
+const displayDate = (date: string) => `${date.slice(8, 10)}/${date.slice(5, 7)}`;
+const displayNumber = (value: number, digits = 0) => value.toFixed(digits).replace(".", ",");
 
 export function deriveWeatherSignals(days: ForecastDay[]): WeatherSignal[] {
   const signals: WeatherSignal[] = [];
@@ -77,7 +79,7 @@ export function deriveWeatherSignals(days: ForecastDay[]): WeatherSignal[] {
       code: "heavy_rain",
       severity: "attention",
       title: "Chuva relevante no horizonte",
-      detail: `${heavyRainDay.date}: ${heavyRainDay.precipitationMm ?? 0} mm previstos, com ${heavyRainDay.precipitationProbabilityPct ?? 0}% de probabilidade.`,
+      detail: `${displayDate(heavyRainDay.date)}: ${displayNumber(heavyRainDay.precipitationMm ?? 0, 1)} mm previstos, com ${heavyRainDay.precipitationProbabilityPct ?? 0}% de probabilidade.`,
     });
   }
 
@@ -88,7 +90,7 @@ export function deriveWeatherSignals(days: ForecastDay[]): WeatherSignal[] {
       code: "dry_window",
       severity: "favorable",
       title: "Janela com baixa chuva prevista",
-      detail: `${threeDayRain.toFixed(1)} mm acumulados nos próximos três dias e probabilidade máxima de ${maxThreeDayProbability}%.`,
+      detail: `${displayNumber(threeDayRain, 1)} mm acumulados nos próximos três dias e probabilidade máxima de ${maxThreeDayProbability}%.`,
     });
   }
 
@@ -98,7 +100,7 @@ export function deriveWeatherSignals(days: ForecastDay[]): WeatherSignal[] {
       code: "heat",
       severity: "attention",
       title: "Calor elevado previsto",
-      detail: `${heatDay.date}: máxima prevista de ${heatDay.temperatureMaxC} °C.`,
+      detail: `${displayDate(heatDay.date)}: máxima prevista de ${displayNumber(heatDay.temperatureMaxC ?? 0, 1)} °C.`,
     });
   }
 
@@ -108,7 +110,7 @@ export function deriveWeatherSignals(days: ForecastDay[]): WeatherSignal[] {
       code: "wind",
       severity: "attention",
       title: "Rajadas fortes previstas",
-      detail: `${windDay.date}: rajadas de até ${windDay.windGustKmh} km/h.`,
+      detail: `${displayDate(windDay.date)}: rajadas de até ${displayNumber(windDay.windGustKmh ?? 0)} km/h.`,
     });
   }
 
