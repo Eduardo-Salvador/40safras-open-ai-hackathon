@@ -1,7 +1,7 @@
 # VITOR-GEOLOC-01 — experimento de cadastro territorial
 
-Status: autorizado pelo product owner para implementação isolada na branch `Vitor`.
-Não autorizado para merge automático na `main`.
+Status: implementado e verificado na branch `Vitor` em 19/08/2026.
+Push da branch autorizado pelo product owner; merge automático na `main` continua fora do escopo.
 
 ## Objetivo e aceite
 
@@ -46,5 +46,21 @@ limite fundiário oficial.
 
 ## Verificação
 
-- Automatizada: `npm run check` e `npm run build`.
-- Manual: busca → zoom → fazenda → talhão → metadados → 3D → clima → recarregar página.
+- Automatizada: `npm ci`, `npm run check` (19 arquivos, 90 testes) e `npm run build`, todos verdes em 19/08/2026.
+- Manual no build de produção: busca por Sorriso/MT → seleção do resultado → desenho da
+  fazenda → desenho e movimentação de talhão → título/cultura/descrição/data → 3D → clima
+  pelo centroide → invalidação da previsão após mover → recarregar página.
+- Persistência comprovada após recarregar: fazenda, talhão, título, cultura, descrição e
+  data `2025-09-20` permaneceram no cadastro local.
+- Previsão ao vivo comprovada: sete dias, coordenada, condição WMO, chuva, probabilidade,
+  temperatura, ET₀, rajadas, fonte, fuso e disclaimer renderizados.
+- Console do navegador: nenhum erro registrado durante o aceite final.
+
+## Handoff
+
+- Task / status: `VITOR-GEOLOC-01` — implemented and verified.
+- Changed: cadastro territorial persistente, mapa 2D/3D e previsão auditável por centroide.
+- Evidence: comandos e jornada manual acima.
+- Contract impact: nenhum; `FarmOperationInput` e o motor permanecem inalterados.
+- Remaining risks: licenças EOX/Esri para uso comercial e decisão humana sobre merge na `main`.
+- Next ready node: revisão/merge pelo orquestrador, se o experimento for aceito no MVP.

@@ -649,7 +649,16 @@ export function TerritoryEditor() {
               <label>Título<input value={selected.title} onChange={(event) => updateSelected({ title: event.target.value })} /></label>
               {selected.kind === "field" && <label>Cultura<select value={selected.crop} onChange={(event) => updateSelected({ crop: event.target.value as Crop })}><option value="soybean">Soja</option><option value="corn">Milho</option><option value="tomato">Tomate</option><option value="other">Outra</option></select></label>}
               <label>Descrição<textarea value={selected.description} onChange={(event) => updateSelected({ description: event.target.value })} /></label>
-              {selected.kind === "field" && <label>Data de plantio<input type="date" value={selected.plantingDate} onChange={(event) => updateSelected({ plantingDate: event.target.value })} /></label>}
+              {selected.kind === "field" && (
+                <label>
+                  Data de plantio
+                  <input
+                    type="date"
+                    value={selected.plantingDate}
+                    onInput={(event) => updateSelected({ plantingDate: event.currentTarget.value })}
+                  />
+                </label>
+              )}
               <div className={styles.editorActions}><button onClick={() => chooseMode(null)}>Salvar localmente</button><button className={styles.danger} onClick={removeSelected}>Remover</button></div>
             </section>
           )}
