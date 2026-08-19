@@ -1,28 +1,26 @@
-# Branch `Murilo` — máquina 2
+# Branch `Murilo` — frontend e demo
 
-- ID: `D1-E1-E2 / ENGINE-DATA`
-- Objective: transformar contratos congelados e dados climáticos normalizados em plano e
-  replano determinísticos, rápidos, rastreáveis e disponíveis offline.
-- Acceptance criterion unlocked: município preparado carrega exatamente 41 safras; plano,
-  P20, finanças e diff são reproduzíveis sem OpenAI.
-- Depends on: SHA de S1/S2 presente na `main`; E1 depende de D1; E2 depende de I1.
-- Read only: task brief, schemas congelados, perfis de cultura, regras determinísticas e
-  notas de domínio necessárias.
-- Exclusive write set: `src/data/**`, arquivos de motor listados na matriz, fixtures de
-  municípios, testes de dados/motor e APIs determinísticas listadas na matriz.
-- Must not change: schemas, manifests, prompts, OpenAI, `app/page.tsx` ou estilos globais.
-- Inputs/contracts: `FarmOperationInput`, `HistoricalDataset`, `PlanResult`, eventos e
-  `ReplanResult` congelados.
-- Deliverables: geocoding; normalização ERA5-Land; cache/proveniência; baseline e até 100
-  candidatos; simulação 41 safras; P20 nearest-rank; finanças em centavos; replano/diff.
-- Verification command/path: testes em `tests/data/**` e `tests/engine/**`, repetibilidade,
-  exatamente 41 safras, limites de candidato, seed/capacidade/área e caminho offline.
-- Stop and report if: contrato não representar um caso necessário, dados tiverem safra
-  incompleta/unidade inesperada, ou premissa agronômica não estiver aprovada.
+- ID: `FRONTEND-F1-F2`
+- Objective: entregar a jornada de três minutos, responsiva, acessível e honesta sobre
+  estados ao vivo, preparados e offline.
+- Acceptance criterion unlocked: voz, texto e formulário chegam ao mesmo draft editável,
+  confirmação, plano, evento, replano, diff e compartilhamento.
+- Depends on: SHA de S1/S2 na `main`; integração real depende das APIs de Eduarco.
+- Read only: schemas e clients públicos; fixtures congeladas durante desenvolvimento visual.
+- Exclusive write set: página, layout, estilos, componentes, sharing, testes UI e assets.
+- Must not change: APIs, schemas, manifests, motor, adapters, prompts ou credenciais.
+- Inputs/contracts: drafts, município, plano, evento, replano e falhas externas.
+- Deliverables: guia de informações; entradas iguais; estados de voz; edição/confirmação;
+  proveniência; plano e finanças; diff; WhatsApp/Telegram/Web Share; estados de erro/cache.
+- Verification command/path: testes críticos e caminho manual em 1366x768 e mobile,
+  teclado, foco, permissão negada, desconexão e offline.
+- Stop and report if: UI precisar recalcular número, contrato for ambíguo ou integração
+  exigir mudança fora do write set.
 
-## Handoffs
+## Sequência
 
-1. Entregar D1 antes de começar E1 e registrar fonte, período, unidades e hash do dataset.
-2. Entregar E1 com todos os números rastreáveis ao input e dataset.
-3. Só começar E2 após I1 aceito; não antecipar IBGE ou outra cultura.
+1. Assumir e organizar o preview existente sem aumentar o escopo.
+2. Fazer F1 contra fixtures congeladas.
+3. Conectar clients das APIs sem alterar backend.
+4. Fazer F2 e conduzir o walkthrough visual do checkpoint humano.
 

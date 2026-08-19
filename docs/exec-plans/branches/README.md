@@ -1,13 +1,23 @@
-# Plano de execução em quatro branches
+# Plano de execução em quatro áreas
 
-Este plano usa as quatro branches remotas existentes e mantém um único dono por arquivo.
-O máximo seguro de implementação paralela continua sendo três especialistas depois do
-congelamento dos contratos; a quarta máquina atua como orquestradora, integradora e
-revisora. Antes desse gate, não há autorização para implementar consumidores do contrato.
+As quatro branches seguem as habilidades definidas pelo time. Cada caminho possui um
+único dono. Integrações acontecem por contratos e APIs, nunca por duas pessoas editando o
+mesmo arquivo.
+
+## Áreas e responsáveis
+
+| Branch | Área | Responsabilidade principal | Nós do grafo |
+|---|---|---|---|
+| `Murilo` | Frontend e demo | experiência, acessibilidade, estados, plano/replano e compartilhamento | F1, F2 e integração visual de I1/I2 |
+| `Eduarco` | Backend e IA | contratos, dependências, APIs, OpenAI/Realtime, segurança e integração server-side | K0, K1, S1, S2, A1, O1 e integração backend de I1/I2 |
+| `Vitor` | Dados externos | geocoding, clima, normalização, proveniência, cache e fixtures municipais | D1 |
+| `Pedro` | Dados analíticos | candidatos, simulação, métricas, finanças, ranking, replano e diff | E1, E2 |
+
+O nome remoto `Eduarco` é mantido exatamente como já existe no GitHub.
 
 ## Base comum
 
-Cada máquina começa somente depois de a `main` conter este plano e executa:
+Depois de este plano entrar na `main`, cada máquina executa:
 
 ```bash
 git fetch origin
@@ -17,61 +27,58 @@ npm ci
 npm run check
 ```
 
-Se o `merge --ff-only` falhar, parar e enviar `git log --oneline --graph --all -20` ao
-orquestrador. Não usar force-push, rebase compartilhado ou resolução improvisada.
-
-## Donos e trilhas
-
-| Máquina | Branch | Trilha | Nós | Só começa quando |
-|---|---|---|---|---|
-| 1 | `Eduarco` | orquestração e contratos | K0, K1, S1, S2, I1, I2, R1 | imediatamente; I1/I2 apenas após handoffs |
-| 2 | `Murilo` | dados e motor | D1, E1, E2 | hash de S1/S2 registrado na `main` |
-| 3 | `Pedro` | OpenAI e voz | A1, O1 | hash de S1/S2 registrado na `main` |
-| 4 | `Vitor` | interface e demo | F1, F2 | hash de S1/S2 registrado na `main` |
-
-Os briefs completos estão nos arquivos com o nome de cada branch nesta pasta.
+Se o fast-forward falhar, parar e enviar `git log --oneline --graph --all -20`. Não usar
+force-push ou rebase em branch compartilhada.
 
 ## Matriz de escrita exclusiva
 
 | Área | Único dono | Caminhos |
 |---|---|---|
-| coordenação, contratos e dependências | `Eduarco` | `pendencia.md`, `docs/exec-plans/**`, `docs/product-specs/MVP.md`, `src/domain/schemas.ts`, `data/crops/**`, `data/fixtures/contracts/**`, `tests/contracts.test.ts`, manifests e configs da raiz |
-| dados, motor e APIs determinísticas | `Murilo` | `src/data/**`, `src/domain/planner.ts`, `src/domain/simulator.ts`, `src/domain/metrics.ts`, `src/domain/finance.ts`, `src/domain/diff.ts`, `data/fixtures/municipalities/**`, `tests/data/**`, `tests/engine/**`, `app/api/locations/**`, `app/api/climate/**`, `app/api/plan/**`, `app/api/replan/**` |
-| OpenAI, Realtime e fallbacks de IA | `Pedro` | `src/lib/openai.ts`, `src/lib/realtime.ts`, `src/prompts/**`, `data/fixtures/ai/**`, `tests/ai/**`, `app/api/realtime-session/**`, `app/api/parse-brief/**`, `app/api/parse-event/**` |
-| interface, compartilhamento e assets | `Vitor` | `app/page.tsx`, `app/globals.css`, `app/layout.tsx`, `src/components/**`, `src/lib/sharing/**`, `tests/ui/**`, `tests/sharing.test.ts`, `public/**` |
+| frontend e assets | `Murilo` | `app/page.tsx`, `app/layout.tsx`, `app/globals.css`, `src/components/**`, `src/lib/sharing/**`, `tests/ui/**`, `tests/sharing.test.ts`, `public/**` |
+| backend, contratos, IA e plataforma | `Eduarco` | `app/api/**`, `app/chatgpt-auth.ts`, `src/domain/schemas.ts`, `src/lib/openai.ts`, `src/lib/realtime.ts`, `src/prompts/**`, `data/fixtures/contracts/**`, `data/fixtures/ai/**`, `tests/contracts.test.ts`, `tests/ai/**`, `pendencia.md`, `docs/exec-plans/**`, `docs/product-specs/MVP.md`, manifests/configs da raiz, `worker/**`, `.openai/**` |
+| ingestão de dados | `Vitor` | `src/data/**`, `data/fixtures/municipalities/**`, `tests/data/**` |
+| motor analítico | `Pedro` | `src/domain/planner.ts`, `src/domain/simulator.ts`, `src/domain/metrics.ts`, `src/domain/finance.ts`, `src/domain/diff.ts`, `data/crops/**`, `tests/engine/**`, `tests/planner.test.ts` |
 
-`package.json`, `package-lock.json`, `tsconfig.json`, configurações de build e
-`src/domain/schemas.ts` nunca são editados fora de `Eduarco`. Quem precisar de dependência
-ou contrato novo abre um pedido com critério de aceite e espera o commit do dono.
+Regras absolutas:
 
-## Ondas e checkpoints
+- Apenas `Eduarco` altera schemas, manifests, lockfile, configurações e rotas de API.
+- Apenas `Murilo` altera a página, componentes, estilos globais e assets.
+- `Vitor` entrega `HistoricalDataset` normalizado; não implementa ranking ou finanças.
+- `Pedro` recebe `HistoricalDataset`; não chama rede, filesystem, relógio ou OpenAI no domínio.
+- Dependência nova é solicitada a `Eduarco` com o critério que ela desbloqueia.
+- Mudança de contrato pausa todos os consumidores até novo teste e hash.
 
-1. **Gate de produto e contrato — serial:** `Eduarco` fecha K0/K1/S1/S2, registra os
-   testes e o SHA do contrato na `main`. As demais máquinas apenas leem e preparam casos.
-2. **Onda 1 — três especialistas:** `Murilo` executa D1/E1, `Pedro` executa A1 e `Vitor`
-   executa F1 contra as mesmas fixtures. `Eduarco` revisa handoffs e não invade os arquivos.
-3. **Integração I1 — serial:** depois dos três handoffs, cada branch entra na `main`.
-   `Vitor` libera `app/page.tsx`; só então `Eduarco` pode fazer uma tarefa de integração
-   explicitamente reassigned nesse arquivo.
-4. **Onda 2 — paralela:** `Murilo` faz E2, `Pedro` faz O1 e `Vitor` faz F2.
-5. **Integração e revisão — serial:** `Eduarco` faz I2/R1, atualiza evidências e apresenta
-   o caminho completo ao owner antes de qualquer extensão.
+## Ondas
 
-## Protocolo de PR e handoff
+1. **Contrato — serial:** `Eduarco` fecha K0/K1/S1/S2 e registra na `main` o SHA/hash do
+   contrato. Os demais apenas revisam casos e preparam critérios.
+2. **Onda 1 — paralela:**
+   - `Vitor` implementa D1 contra os schemas congelados.
+   - `Pedro` implementa o núcleo puro de E1 contra a fixture histórica congelada.
+   - `Murilo` implementa F1 contra os mesmos payloads congelados.
+   - `Eduarco` implementa A1 e as rotas backend.
+3. **Integração I1:** `Vitor` e `Pedro` entregam módulos, `Eduarco` conecta APIs sem editar
+   domínio, e `Murilo` conecta a UI sem editar backend. Cada metade fica em sua branch.
+4. **Onda 2 — paralela:** `Pedro` executa E2, `Murilo` executa F2 e `Eduarco` executa O1;
+   `Vitor` reforça cache, proveniência e fixtures de contingência de D1.
+5. **Freeze:** os quatro enviam handoff; `Eduarco` registra evidências e `Murilo` conduz o
+   walkthrough visual com o owner. Extensões só começam depois da revisão do core.
 
-- Uma PR por nó do grafo; não agrupar refatoração alheia.
-- Antes da PR: `git merge origin/main`, resolver somente arquivos do próprio write set e
-  executar a verificação do brief.
-- A descrição da PR usa `docs/templates/HANDOFF.md` e inclui arquivos, evidência, impacto
-  de contrato e riscos.
-- O merge é bloqueado se tocar caminho de outro dono, alterar número determinístico sem
-  teste, ou marcar checkbox sem evidência no plano ativo.
-- Depois do merge, as outras três máquinas executam `git fetch origin` e
-  `git merge origin/main` antes de continuar.
+E1 pode ser desenvolvido em paralelo a D1 porque recebe o dataset por injeção e usa a
+fixture de contrato. I1 continua bloqueado até D1 provar 41 safras completas e E1 passar
+com o dataset normalizado real ou cacheado.
 
-## Estado do preview existente
+## Protocolo de PR
 
-O preview em `app/` e `src/domain/planner.ts` é evidência de experiência, não conclusão
-dos nós canônicos. `Vitor` é dono da interface existente; `Murilo` é dono do planner
-existente. Dados climáticos continuam sintéticos e voz continua preparada/offline até os
-respectivos nós passarem pelos critérios formais.
+- Uma PR por nó do grafo, limitada ao write set da branch.
+- Antes da PR: `git fetch origin`, `git merge origin/main` e verificação do brief.
+- A descrição segue `docs/templates/HANDOFF.md`.
+- PR é bloqueada se tocar arquivo de outro dono, mudar contrato sem autorização, alterar
+  número determinístico sem teste ou marcar checkbox sem evidência.
+- Depois de cada merge, todas as máquinas sincronizam `origin/main` antes de continuar.
+
+## Preview existente
+
+O preview é apenas base visual e prova de conceito. `Murilo` assume os arquivos de UI;
+`Pedro` assume o planner. A fixture climática continua sintética e a voz continua
+preparada/offline até D1 e A1 cumprirem os gates formais.
