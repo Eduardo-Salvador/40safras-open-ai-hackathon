@@ -1,0 +1,104 @@
+import styles from "./season-strip.module.css";
+import { percentile } from "@/domain/metrics";
+
+// Illustrative default: percentage of totalAreaHa reachable for second crop
+// per season. Zeroed entries stand in for a full washout that season.
+const ILLUSTRATIVE_AREA_PCT_BY_SEASON = [
+  62, 71, 55, 80, 44, 68, 73, 58, 36, 64, 77, 50, 0, 0, 0, 0, 60, 74, 66, 45,
+  82, 69, 38, 57, 72, 64, 0, 0, 48, 61, 75, 58, 42, 67, 80, 53, 0, 63, 71, 59,
+  46,
+];
+
+export type SeasonStripSeason = { label: string; areaHa: number };
+
+type SeasonStripProps = {
+  totalAreaHa: number;
+  seasons?: SeasonStripSeason[];
+  eyebrow?: string;
+  heading?: string;
+  tag?: string;
+};
+
+export function SeasonStrip({
+  totalAreaHa,
+  seasons,
+  eyebrow = "Prova histórica",
+  heading = "41 safras, uma barra cada.",
+  tag = "dados ilustrativos",
+}: SeasonStripProps) {
+  const resolvedSeasons =
+    seasons ??
+    ILLUSTRATIVE_AREA_PCT_BY_SEASON.map((pct, i) => ({
+      label: String(i + 1),
+      areaHa: Math.round((pct / 100) * totalAreaHa),
+    }));
+
+  const viableCount = resolvedSeasons.filter((s) => s.areaHa > 0).length;
+  const areaValues = resolvedSeasons.map((s) => s.areaHa);
+  const p20Ha = Math.round(percentile(areaValues, 20));
+  const p20Pct = totalAreaHa > 0 ? Math.round((p20Ha / totalAreaHa) * 100) : 0;
+  const maxAreaHa = Math.max(...areaValues, 1);
+
+  return (
+    <div className={styles.panel}>
+      <div className={styles.panelHead}>
+        <div>
+          <p className={styles.eyebrow}>{eyebrow}</p>
+          <h2 className={styles.heading}>{heading}</h2>
+        </div>
+        <span className={styles.tag}>{tag}</span>
+      </div>
+
+      <div
+        className={styles.strip}
+        role="img"
+        aria-label={`${viableCount} de ${resolvedSeasons.length} safras históricas viáveis para segunda safra`}
+      >
+        {resolvedSeasons.map((s, i) => (
+          <span
+            key={`${s.label}-${i}`}
+            className={styles.bar}
+            data-viable={s.areaHa > 0}
+            style={{ height: `${18 + (s.areaHa / maxAreaHa) * 70}px` }}
+            title={`Safra ${s.label}: ${s.areaHa} ha com janela para segunda safra`}
+          />
+        ))}
+      </div>
+
+      <div className={styles.stats}>
+        <div className={styles.statGroup}>
+          <span className={styles.dot} data-tone="soy" />
+          <span>viável para segunda safra</span>
+        </div>
+        <div className={styles.statGroup}>
+          <span className={styles.dot} data-tone="risk" />
+          <span>sem janela para segunda safra</span>
+        </div>
+      </div>
+
+      <div className={styles.metrics}>
+        <div className={styles.metric}>
+          <span className={styles.metricValue}>
+            {viableCount}
+            <span className={styles.metricOf}>/{resolvedSeasons.length}</span>
+          </span>
+          <span className={styles.metricLabel}>safras viáveis</span>
+        </div>
+        <div className={styles.metric}>
+          <span className={styles.metricValue}>
+            {p20Ha}
+            <span className={styles.metricOf}> ha</span>
+          </span>
+          <span className={styles.metricLabel}>segunda safra em P20</span>
+        </div>
+        <div className={styles.metric}>
+          <span className={styles.metricValue}>
+            {p20Pct}
+            <span className={styles.metricOf}>%</span>
+          </span>
+          <span className={styles.metricLabel}>da área, cenário P20</span>
+        </div>
+      </div>
+    </div>
+  );
+}

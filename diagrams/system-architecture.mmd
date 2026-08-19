@@ -1,0 +1,109 @@
+%% Quarenta Safras — arquitetura do sistema (estado atual do build)
+%% Gerado a partir do código implementado em src/, data/ e docs/ARCHITECTURE.md.
+%% Visualizar em https://mermaid.live ou em qualquer renderer Mermaid.
+
+flowchart TD
+  subgraph UI["Navegador — Next.js App Router (client)"]
+    Page["page.tsx<br/>hero + faixa ilustrativa (teaser)"]
+    Form["OperationForm.tsx<br/>briefing → plano → evento → replan → WhatsApp"]
+    Strip["SeasonStrip.tsx<br/>faixa de 41 barras (ilustrativa ou real)"]
+    Page --> Form
+    Page --> Strip
+    Form --> Strip
+  end
+
+  subgraph API["Rotas de API — server-only (Next.js route handlers)"]
+    LocRoute["/api/locations<br/>GET ?q=&lt;nome&gt;"]
+    ClimRoute["/api/climate<br/>POST { municipality }"]
+  end
+
+  subgraph DATA["src/data — geocodificação e clima (I/O)"]
+    Geo["geocoding.ts<br/>geocodeMunicipality()"]
+    Clim["climate.ts<br/>fetchHistoricalSeasons()<br/>heurística de fim de chuva"]
+    Cache["cache.ts<br/>Map em memória, chave = IBGE/grid"]
+    Norm["normalize.ts<br/>state-codes.ts"]
+  end
+
+  subgraph EXT["APIs externas — sem chave"]
+    OMGeo["Open-Meteo Geocoding API"]
+    IBGE["IBGE Localidades API"]
+    OMArch["Open-Meteo Archive API (ERA5)<br/>precipitation_sum, 41+ anos"]
+  end
+
+  subgraph FIX["Fixture offline (fallback)"]
+    FixMun["data/fixtures/municipalities/sorriso-mt.ts<br/>Municipality + 41 HistoricalSeason"]
+  end
+
+  subgraph DOMAIN["src/domain — motor puro e determinístico (sem rede)"]
+    Schemas["schemas.ts<br/>contratos Zod: FarmOperationInput,<br/>HistoricalDataset, PlanResult, ReplanResult"]
+    Crops["crop-profiles.ts<br/>data/crops/soybean.ts · corn.ts"]
+    Dates["dates.ts<br/>aritmética de datas em UTC"]
+    Sim["simulator.ts<br/>fila da plantadeira → datas → viabilidade por safra"]
+    Planner["planner.ts<br/>ordem usual vs. ordem Quarenta Safras"]
+    Finance["finance.ts<br/>margem soja/milho em centavos"]
+    Metrics["metrics.ts<br/>percentil (P20), mediana, hash determinístico"]
+    FieldEvt["field-event.ts<br/>aplica bloqueio de talhão / delta de semente"]
+    Diff["diff.ts<br/>compara PlanResult antes/depois"]
+    Replan["replan.ts<br/>orquestra field-event + diff"]
+  end
+
+  subgraph SHARE["Compartilhamento"]
+    WA["lib/whatsapp.ts<br/>mensagem determinística"]
+    WAme(["wa.me deep link"])
+  end
+
+  %% Fluxo: busca de município e clima
+  Form -- "1. buscar clima (nome do município)" --> LocRoute
+  LocRoute --> Geo
+  Geo --> OMGeo
+  Geo --> IBGE
+  Geo --> Norm
+  Geo -- "Municipality" --> LocRoute
+  LocRoute -- "Municipality" --> Form
+
+  Form -- "2. POST municipality" --> ClimRoute
+  ClimRoute --> Cache
+  Cache -- "cache hit" --> ClimRoute
+  Cache -- "cache miss" --> Clim
+  Clim --> OMArch
+  Clim -- "HistoricalDataset (real:true)" --> Cache
+  ClimRoute -- "HistoricalDataset" --> Form
+
+  Form -. "falha de rede / geocodificação" .-> FixMun
+  FixMun -. "Municipality + 41 safras (real:false)" .-> Form
+
+  %% Fluxo: cálculo do plano
+  Form -- "3. FarmOperationInput" --> Schemas
+  Schemas -- "validado" --> Planner
+  Planner --> Sim
+  Sim --> Crops
+  Sim --> Dates
+  Planner --> Crops
+  Planner --> Finance
+  Planner --> Metrics
+  Planner -- "PlanResult (baseline vs. candidata)" --> Form
+
+  %% Fluxo: evento de campo e replan
+  Form -- "4. FieldEvent (ex: talhão alagado)" --> Replan
+  Replan --> FieldEvt
+  Replan -- "reusa" --> Planner
+  Replan --> Diff
+  Replan -- "ReplanResult { before, after, changes }" --> Form
+
+  %% Fluxo: compartilhamento
+  Form -- "5. PlanResult / ReplanResult" --> WA
+  WA --> WAme
+
+  classDef ext fill:#3a2a1a,stroke:#e8b23d,stroke-width:1px,color:#f2e9d8;
+  classDef domain fill:#1c2a14,stroke:#9bc53d,stroke-width:1px,color:#f2e9d8;
+  classDef data fill:#241d16,stroke:#b9ad97,stroke-width:1px,color:#f2e9d8;
+  classDef ui fill:#2c231a,stroke:#f2e9d8,stroke-width:1px,color:#f2e9d8;
+  classDef fixture fill:#3a1f16,stroke:#c25a33,stroke-width:1px,color:#f2e9d8;
+  classDef share fill:#1a2a1f,stroke:#9bc53d,stroke-width:1px,color:#f2e9d8;
+
+  class OMGeo,IBGE,OMArch ext;
+  class Schemas,Crops,Dates,Sim,Planner,Finance,Metrics,FieldEvt,Diff,Replan domain;
+  class Geo,Clim,Cache,Norm data;
+  class Page,Form,Strip ui;
+  class FixMun fixture;
+  class WA,WAme share;

@@ -1,0 +1,137 @@
+.panel {
+  background: var(--bg-raised);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 1.75rem 1.75rem 2rem;
+}
+
+.panelHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--corn);
+  margin: 0 0 0.4rem;
+}
+
+.heading {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.3rem, 2.4vw, 1.75rem);
+  margin: 0;
+  color: var(--ink);
+}
+
+.tag {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  white-space: nowrap;
+  margin-top: 0.25rem;
+}
+
+.strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 96px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
+}
+
+.bar {
+  flex: 1 0 5px;
+  min-width: 5px;
+  max-width: 10px;
+  border-radius: 2px 2px 0 0;
+  background: var(--soy);
+  opacity: 0.92;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.bar:hover {
+  opacity: 1;
+  transform: scaleY(1.03);
+}
+
+.bar[data-viable="false"] {
+  background: var(--risk);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+
+.statGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--soy);
+}
+
+.dot[data-tone="risk"] {
+  background: var(--risk);
+}
+
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2.5rem;
+  margin-top: 1.5rem;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.metricValue {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 1.6rem;
+  color: var(--ink);
+}
+
+.metricOf {
+  font-size: 1rem;
+  color: var(--ink-faint);
+}
+
+.metricLabel {
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
