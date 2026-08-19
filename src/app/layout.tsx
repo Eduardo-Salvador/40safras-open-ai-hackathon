@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Bricolage_Grotesque, Public_Sans, Spline_Sans_Mono } from "next/font/google";
 import "./globals.css";
+import "maplibre-gl/dist/maplibre-gl.css";
 
 const display = Bricolage_Grotesque({
   variable: "--font-display",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "@/app/page.module.css";
 import detailsStyles from "./operation-details.module.css";
 import stripStyles from "./season-strip.module.css";
@@ -17,13 +17,16 @@ import { buildPlanWhatsAppMessage, buildReplanWhatsAppMessage, buildWhatsAppShar
 import { sorrisoMt, sorrisoMt41Seasons } from "../../data/fixtures/municipalities/sorriso-mt";
 import { PlanAccess } from "./plan-access";
 import { SeasonStrip } from "./season-strip";
+import { TerritoryEditor } from "./territory/territory-editor";
+import { connectRealtimeVoiceSession, type RealtimeVoiceController } from "@/lib/realtime-client";
 
 type ClimateStatus = "fixture" | "loading" | "live" | "error";
 type InputMode = "voice" | "text" | "form";
-type JourneyStage = "report" | "complete" | "review" | "confirm" | "plan";
+type JourneyStage = "report" | "territory" | "complete" | "review" | "confirm" | "plan";
 
 const JOURNEY_STEPS: Array<{ id: JourneyStage; label: string }> = [
   { id: "report", label: "Contar" },
+  { id: "territory", label: "Localização" },
   { id: "complete", label: "Completar" },
   { id: "review", label: "Conferir" },
   { id: "confirm", label: "Confirmar" },
@@ -66,14 +69,16 @@ const FIELDS: FarmOperationInput["fields"] = [
 ];
 
 const SEED_LOTS: FarmOperationInput["seedLots"] = [
-  { crop: "soybean", cycleDays: 98, availableAreaHa: 480 },
-  { crop: "soybean", cycleDays: 112, availableAreaHa: 370 },
+  { id: "SOJA-98", crop: "soybean", cycleDays: 98, availableAreaHa: 480 },
+  { id: "SOJA-112", crop: "soybean", cycleDays: 112, availableAreaHa: 370 },
 ];
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 export function OperationForm() {
+  const voiceControllerRef = useRef<RealtimeVoiceController | null>(null);
   const [inputMode, setInputMode] = useState<InputMode>("voice");
+  const [voiceStatus, setVoiceStatus] = useState<"idle" | "connecting" | "listening" | "error">("idle");
   const [naturalBrief, setNaturalBrief] = useState(PREPARED_BRIEF);
   const [journeyStage, setJourneyStage] = useState<JourneyStage>("report");
   const [draftSource, setDraftSource] = useState<InputMode>("voice");
@@ -96,6 +101,49 @@ export function OperationForm() {
   const [replan, setReplan] = useState<ReplanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => () => voiceControllerRef.current?.close(), []);
+
+  async function toggleVoice() {
+    if (voiceControllerRef.current) {
+      voiceControllerRef.current.stopPushToTalk();
+      voiceControllerRef.current.close();
+      voiceControllerRef.current = null;
+      setVoiceStatus("idle");
+      beginCompletion("voice");
+      return;
+    }
+
+    setVoiceStatus("connecting");
+    setError(null);
+    try {
+      const controller = await connectRealtimeVoiceSession(crypto.randomUUID(), {
+        updateOperationDraft: ({ draft }) => {
+          setNaturalBrief(JSON.stringify(draft));
+          return { ok: true, message: "Rascunho atualizado. Continue a conversa e confirme os dados com o produtor." };
+        },
+        requestOperationConfirmation: ({ draftVersion }) => ({
+          ok: true,
+          draftVersion,
+          confirmationToken: `voice-${draftVersion}`,
+          message: "Leia o resumo e peça uma confirmação explícita." ,
+        }),
+        confirmOperationAndCalculate: ({ affirmative }) => {
+          if (affirmative) beginCompletion("voice");
+          return { ok: affirmative, message: affirmative ? "Confirmação registrada. A interface avançou para a localização." : "Confirmação negada." };
+        },
+        updateFieldEventDraft: () => ({ ok: true }),
+        requestFieldEventConfirmation: ({ draftVersion }) => ({ ok: true, draftVersion, confirmationToken: `event-${draftVersion}` }),
+        confirmFieldEvent: ({ affirmative }) => ({ ok: affirmative }),
+      });
+      voiceControllerRef.current = controller;
+      controller.startPushToTalk();
+      setVoiceStatus("listening");
+    } catch {
+      setVoiceStatus("error");
+      setError("Não foi possível abrir o microfone agora. Você pode tentar novamente ou digitar o relato.");
+    }
+  }
+
   function invalidateConfirmation() {
     setLastInput(null);
     setPlan(null);
@@ -106,7 +154,7 @@ export function OperationForm() {
     setDraftSource(source);
     setError(null);
     invalidateConfirmation();
-    setJourneyStage("complete");
+    setJourneyStage("territory");
   }
 
   async function handleLoadClimate() {
@@ -255,18 +303,18 @@ export function OperationForm() {
                         <li>sementes, tempo de ciclo e meta de milho.</li>
                       </ul>
                     </div>
-                    <button type="button" className={styles.voiceButton} onClick={() => beginCompletion("voice")}>
+                    <button type="button" className={styles.voiceButton} onClick={toggleVoice} disabled={voiceStatus === "connecting"} aria-pressed={voiceStatus === "listening"}>
                       <span className={styles.voiceIcon} aria-hidden="true">
                         <svg className={styles.microphoneIcon} viewBox="0 0 24 24" fill="none" focusable="false" aria-hidden="true">
                           <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" stroke="currentColor" strokeWidth="1.8" />
                           <path d="M18 11a6 6 0 0 1-12 0M12 17v4M8 21h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                         </svg>
                       </span>
-                      <strong>Toque para falar</strong>
-                      <small>Fale como se estivesse explicando para alguém da sua equipe</small>
+                      <strong>{voiceStatus === "connecting" ? "Conectando…" : voiceStatus === "listening" ? "Ouvindo — toque para concluir" : "Toque para falar"}</strong>
+                      <small>{voiceStatus === "listening" ? "Converse com o assistente e confirme seu relato por voz" : "Fale como se estivesse explicando para alguém da sua equipe"}</small>
                     </button>
                     <p className={styles.voicePreparedNote}>
-                      Por enquanto, este botão usa um exemplo de fala. Em breve ele vai ouvir seu relato.
+                      {voiceStatus === "error" ? "A voz está indisponível; use o caminho digitado abaixo." : "Voz em tempo real com confirmação explícita antes do cálculo."}
                     </p>
                   </div>
                   <button type="button" className={styles.typeInvite} onClick={() => setInputMode("text")}>
@@ -295,6 +343,23 @@ export function OperationForm() {
                   </div>
                 </div>
               )}
+            </div>
+          </>
+        )}
+
+        {journeyStage === "territory" && (
+          <>
+            <div className={styles.modeHeader}>
+              <div>
+                <p className={styles.tableLabel}>Etapa 2 · localização</p>
+                <p className={styles.modeHint}>Busque a região, desenhe a fazenda e os talhões e consulte o clima no próprio mapa.</p>
+              </div>
+              <span className={styles.stepBadge}>mapa editável</span>
+            </div>
+            <TerritoryEditor embedded onContinue={() => setJourneyStage("complete")} />
+            <div className={styles.journeyActions}>
+              <button type="button" className={styles.ctaSecondary} onClick={goBack}>Voltar</button>
+              <button type="button" className={styles.submit} onClick={() => setJourneyStage("complete")}>Continuar com esta localização →</button>
             </div>
           </>
         )}
@@ -614,6 +679,11 @@ export function OperationForm() {
               </div>
               <span className={styles.stepBadge}>pronto para usar</span>
             </div>
+          <div>
+            <p className={styles.tableLabel}>Localização, talhões e clima</p>
+            <p className={styles.modeHint} style={{ marginBottom: "0.75rem" }}>O mapa continua editável para apoiar a decisão e uma nova análise.</p>
+            <TerritoryEditor embedded />
+          </div>
           <SeasonStrip
             totalAreaHa={FIELDS.filter((f) => f.priority === "second_crop").reduce((s, f) => s + f.areaHa, 0)}
             seasons={plan.historicalOutcomes.map((o) => ({ label: o.season, areaHa: o.secondCropViableAreaHa }))}
