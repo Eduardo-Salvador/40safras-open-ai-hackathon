@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GeocodingError, geocodeMunicipality } from "@/data/geocoding";
+import { GeocodingError, MunicipalityAmbiguityError, geocodeMunicipality } from "@/data/geocoding";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status });
@@ -70,5 +70,51 @@ describe("geocodeMunicipality", () => {
       ],
     });
     await expect(geocodeMunicipality("Somewhere", fetchImpl)).rejects.toThrow(GeocodingError);
+  });
+
+  it("does not silently select a municipality when the query is ambiguous", async () => {
+    const fetchImpl = mockFetch({
+      openMeteo: [
+        { name: "Santa Maria", latitude: -29.7, longitude: -53.8, country_code: "BR", admin1: "Rio Grande do Sul" },
+        { name: "Santa Maria", latitude: -10.0, longitude: -40.0, country_code: "BR", admin1: "Bahia" },
+      ],
+    });
+
+    await expect(geocodeMunicipality("Santa Maria", fetchImpl)).rejects.toThrow(MunicipalityAmbiguityError);
+  });
+
+  it("prefers the exact municipality over similarly named places", async () => {
+    const fetchImpl = mockFetch({
+      openMeteo: [
+        {
+          name: "Sorriso",
+          latitude: -12.5453,
+          longitude: -55.7217,
+          country_code: "BR",
+          admin1: "Mato Grosso",
+        },
+        {
+          name: "Sorriso Airport",
+          latitude: -12.48,
+          longitude: -55.67,
+          country_code: "BR",
+          admin1: "Mato Grosso",
+        },
+      ],
+      ibge: [{ id: 5107925, nome: "Sorriso" }],
+    });
+
+    await expect(geocodeMunicipality("Sorriso, MT", fetchImpl)).resolves.toMatchObject({
+      name: "Sorriso",
+      state: "MT",
+      ibgeCode: "5107925",
+    });
+  });
+
+  it("reports a rate limit from Open-Meteo", async () => {
+    const fetchImpl = mockFetch({ openMeteo: undefined });
+    const limitedFetch = (async () => jsonResponse({ reason: "rate limit" }, 429)) as unknown as typeof fetch;
+    await expect(geocodeMunicipality("Sorriso", limitedFetch)).rejects.toThrow("rate limited");
+    await expect(geocodeMunicipality("Sorriso", fetchImpl)).rejects.toThrow(GeocodingError);
   });
 });

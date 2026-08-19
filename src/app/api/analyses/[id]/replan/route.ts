@@ -17,7 +17,10 @@ const SavedReplanRequestSchema = z.object({
   event: FieldEventSchema,
 });
 
-export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+export async function POST(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
   if (!verifySessionToken(req.cookies.get(AUTH_COOKIE_NAME)?.value)) {
     return NextResponse.json({ error: "authentication required" }, { status: 401 });
   }
@@ -39,12 +42,17 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       method: args.method,
       affirmative: args.affirmative,
     });
-    const replan = ReplanResultSchema.parse(buildReplan(analysis.operation, analysis.dataset, args.event));
+    const replan = ReplanResultSchema.parse(
+      buildReplan(analysis.operation, analysis.dataset, args.event),
+    );
     const updated = await analysisStore.addReplan(id, replan);
     return NextResponse.json({ analysis: updated, replan });
   } catch (error) {
     if (error instanceof ConfirmationError) {
-      return NextResponse.json({ error: "field event confirmation rejected", code: error.code }, { status: 409 });
+      return NextResponse.json(
+        { error: "field event confirmation rejected", code: error.code },
+        { status: 409 },
+      );
     }
     return NextResponse.json({ error: "saved replan failed" }, { status: 500 });
   }

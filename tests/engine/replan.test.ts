@@ -15,8 +15,8 @@ const input: FarmOperationInput = {
     { id: "B", areaHa: 100, priority: "second_crop" },
   ],
   seedLots: [
-    { crop: "soybean", cycleDays: 90, availableAreaHa: 200 },
-    { crop: "soybean", cycleDays: 120, availableAreaHa: 200 },
+    { id: "S90", crop: "soybean", cycleDays: 90, availableAreaHa: 200 },
+    { id: "S120", crop: "soybean", cycleDays: 120, availableAreaHa: 200 },
   ],
   secondCropTargetAreaHa: 100,
   finance: { soybeanMarginPerHa: 1000, cornMarginPerHa: 800 },

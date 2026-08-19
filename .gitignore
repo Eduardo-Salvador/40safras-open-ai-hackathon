@@ -6,6 +6,7 @@ node_modules/
 coverage/
 playwright-report/
 test-results/
+.data/
 *.log
 *.tsbuildinfo
 .DS_Store

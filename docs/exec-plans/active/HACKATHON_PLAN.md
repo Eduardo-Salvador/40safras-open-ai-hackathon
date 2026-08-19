@@ -19,7 +19,6 @@ Brazilian municipality
 -> 41-season cached climate dataset
 -> baseline versus recommended soybean-to-corn plan
 -> P20 operational and simple financial evidence
--> voluntary save -> single demo login -> local saved plan/history
 -> field event
 -> auditable replan
 -> short spoken conclusion
@@ -99,7 +98,7 @@ have higher value after core freeze.
 | baseline | analogous yield range, no point prediction | More honest with a small municipal annual sample |
 | baseline | TypeScript end-to-end | Fast single-process development and deployment |
 | baseline | deterministic planner; LLM at language boundary | Traceable numbers and reliable offline demo |
-| baseline | voice is the dominant entry; “Prefere digitar?” reveals text and form | Voice leads the first contact while all modes remain independent, share one draft and preserve the deterministic boundary |
+| baseline | voice, text, and form are equal entry modes | Producer chooses a mode; all modes share one draft and deterministic boundary |
 | baseline | explicit confirmation before voice tool call | Prevents misunderstood audio from reaching the planner |
 | baseline | `pendencia.md` is the granular pending-work authority | Future status answers report unchecked dependency-ready items with evidence |
 | baseline | walkthrough is the canonical plain-language explanation | Product/build questions reuse one unambiguous end-to-end narrative |
@@ -107,9 +106,8 @@ have higher value after core freeze.
 | baseline | direct SDK on server, Agents SDK for browser voice | `openai` handles API calls; `@openai/agents` handles Realtime session mechanics |
 | execution | four areas follow team strengths | Murilo owns frontend; Eduarco owns backend/IA; Vitor owns external data; Pedro owns deterministic analytics. Write sets are disjoint and integration crosses only contracts/APIs |
 | execution | pure E1 may start from the frozen historical fixture while D1 runs | Pedro and Vitor can work in parallel; I1 remains blocked until Vitor proves the normalized 41-season dataset |
-| F1 | `docs/SYSTEM_DESIGN.md` is the canonical product/interaction reference | Product behavior, layout, visible states and transitions must follow the guided journey and explicit deterministic boundary recorded there |
-| SD-010 | Progressive authentication is requested only when the producer saves a completed plan | Entry, confirmation and the first calculation remain open; server-side ownership is required for persisted plans, history and replan, while provider/storage selection remains a human decision |
-| SD-012 | Use the implemented single-user demo login and local analysis store | UI labels the value as e-mail but posts it as `username`; `origin/Eduarco` supplies login/session/logout and analysis/replan contracts, with 8h HttpOnly cookie and `.data/analyses.json`; this supersedes the provider/multi-tenant assumption in SD-010 |
+| D1 | Open-Meteo archive uses ERA5, not ERA5-Land | On 2026-08-19, ERA5-Land returned `null` for required `precipitation_sum` and `et0_fao_evapotranspiration`; ERA5 returned complete precipitation, ET0, min/max temperature series for the fixed 1985-07-01 to 2026-06-30 period. Live datasets, cache keys, fixtures, and provenance label ERA5 explicitly. |
+| D1 | Surface soil moisture is unavailable in the ERA5 core path | The frozen dataset/engine does not consume a soil-moisture field. It is not silently substituted or synthesized; add it only through a reviewed schema and model/source decision. |
 
 ## Cuts made
 
@@ -119,8 +117,8 @@ None yet.
 
 | Gate | Command/manual path | Result | Time |
 |---|---|---|---|
+| D1 | `npm run check`; mocked incomplete/null-series and API fallback cases | 59 tests passed; TypeScript and lint passed | 2026-08-19 |
 | - | - | - | - |
-| K0.5 decision/source review | Inspected local ref `origin/Eduarco` commit `557f37d` and its auth/analysis tests | Confirmed single-user login, 8h HttpOnly cookie, analysis/replan routes and `.data/analyses.json`; UI integration remains pending | 2026-08-19 |
 
 ## Open risks
 
@@ -132,10 +130,7 @@ None yet.
 - Realtime access, microphone permission, network jitter, and ambient noise can fail;
   text input and prepared drafts remain mandatory fallbacks.
 - Additional crop profiles need defensible parameters, not copied labels.
-- Demo auth/store exists on `origin/Eduarco`, but it is a single shared login and local
-  `.data/analyses.json`. Integration must reuse those contracts; it cannot claim producer
-  ownership, multi-tenant isolation or durable Vercel storage. Retention and production
-  migration remain open decisions.
+- ERA5-Land lacks precipitation and ET0 in the tested Open-Meteo archive response; ERA5 is the approved core source. Soil moisture remains out of scope until a reviewed source/schema path exists.
 
 ## Demo-ready criteria
 
@@ -145,9 +140,6 @@ None yet.
 - Any-municipality live path demonstrated at least once outside the final demo.
 - Three prepared municipalities load offline.
 - Canonical municipality plan and replan work online and offline.
-- A producer can calculate without authentication; saving requests the configured demo
-  login and reuses the server contracts from `origin/Eduarco`. The demo clearly states
-  that its shared local history is not multi-tenant or durable on Vercel.
 - Financial values trace to declared inputs and deterministic payloads.
 - WhatsApp and Telegram share links open correctly encoded messages.
 - No open P0/P1 reviewer finding.

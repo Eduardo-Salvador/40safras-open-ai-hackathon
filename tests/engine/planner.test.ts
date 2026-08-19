@@ -15,8 +15,8 @@ const input: FarmOperationInput = {
     { id: "B", areaHa: 100, priority: "second_crop" },
   ],
   seedLots: [
-    { crop: "soybean", cycleDays: 90, availableAreaHa: 200 },
-    { crop: "soybean", cycleDays: 120, availableAreaHa: 200 },
+    { id: "S90", crop: "soybean", cycleDays: 90, availableAreaHa: 200 },
+    { id: "S120", crop: "soybean", cycleDays: 120, availableAreaHa: 200 },
   ],
   secondCropTargetAreaHa: 100,
   finance: { soybeanMarginPerHa: 1000, cornMarginPerHa: 800 },
@@ -66,5 +66,57 @@ describe("buildPlan", () => {
     expect(plan.metrics.viableSeasons).toBeLessThanOrEqual(41);
     expect(plan.metrics.secondCropAreaP20Ha).toBeLessThanOrEqual(100);
     expect(Number.isFinite(plan.metrics.financialP20)).toBe(true);
+  });
+
+  it("rejeita dataset que não tenha exatamente 41 safras", () => {
+    const incomplete = { ...tightSeasonDataset, records: tightSeasonDataset.records.slice(0, 40) };
+    expect(() => buildPlan(input, incomplete)).toThrow(/exatamente 41 safras/);
+  });
+
+  it("usa a chave canônica como desempate final estável", () => {
+    const tiedInput: FarmOperationInput = {
+      ...input,
+      fields: [
+        { id: "B", areaHa: 100, priority: "second_crop" },
+        { id: "A", areaHa: 100, priority: "second_crop" },
+      ],
+      seedLots: [{ id: "S90", crop: "soybean", cycleDays: 90, availableAreaHa: 200 }],
+    };
+    const generousDataset = {
+      ...tightSeasonDataset,
+      records: tightSeasonDataset.records.map((record) => ({ ...record, rainWindowDaysFromStart: 365 })),
+    };
+
+    expect(buildPlan(tiedInput, generousDataset).sequence.map((item) => item.fieldId)).toEqual(["A", "B"]);
+  });
+
+  it("não altera a operação nem o dataset recebidos", () => {
+    const inputSnapshot = structuredClone(input);
+    const datasetSnapshot = structuredClone(tightSeasonDataset);
+    buildPlan(input, tightSeasonDataset);
+    expect(input).toEqual(inputSnapshot);
+    expect(tightSeasonDataset).toEqual(datasetSnapshot);
+  });
+
+  it("avalia o limite de cem candidatos em menos de um segundo", () => {
+    const fields = ["A", "B", "C", "D"].map((id) => ({
+      id,
+      areaHa: 25,
+      priority: "second_crop" as const,
+    }));
+    const seedLots = [90, 100, 110, 120].map((cycleDays) => ({
+      id: `S${cycleDays}`,
+      crop: "soybean" as const,
+      cycleDays,
+      availableAreaHa: 100,
+    }));
+    const canonicalInput = { ...input, fields, seedLots, totalAreaHa: 100, secondCropTargetAreaHa: 100 };
+
+    const startedAt = performance.now();
+    const plan = buildPlan(canonicalInput, sorrisoMt41Seasons);
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(plan.historicalOutcomes).toHaveLength(41);
+    expect(elapsedMs).toBeLessThan(1_000);
   });
 });

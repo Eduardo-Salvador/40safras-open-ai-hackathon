@@ -1,4 +1,4 @@
-import { addDays, daysBetween, toIsoDate } from "@/domain/dates";
+import { addDays, daysBetween } from "@/domain/dates";
 import type { HistoricalDataset, HistoricalSeason, Municipality } from "@/domain/schemas";
 
 export class ClimateFetchError extends Error {}
@@ -8,21 +8,19 @@ type FetchFn = typeof fetch;
 type DailyPrecipitation = { dates: string[]; precipitationMm: number[] };
 
 const NUM_SEASONS = 41;
+export const CLIMATE_PERIOD_START = "1985-07-01";
+export const CLIMATE_PERIOD_END = "2026-06-30";
+const DAILY_VARIABLES = [
+  "precipitation_sum",
+  "et0_fao_evapotranspiration",
+  "temperature_2m_min",
+  "temperature_2m_max",
+] as const;
 const SEASON_START_MONTH_DAY = "09-15";
 const DRY_DOWN_SEARCH_START_MONTH_DAY = "03-01";
-const DRY_DOWN_SEARCH_END_MONTH_DAY = "08-31";
+const DRY_DOWN_SEARCH_END_MONTH_DAY = "06-30";
 const DRY_DOWN_WINDOW_DAYS = 10;
 const DRY_DOWN_THRESHOLD_MM = 15;
-/** Open-Meteo's ERA5 archive reports with a short delay; never request past this. */
-const ARCHIVE_REPORTING_LAG_DAYS = 5;
-
-/** The most recent agricultural year whose safrinha window has plausibly closed. */
-function latestCompleteSeasonEndYear(referenceDate: Date): number {
-  const year = referenceDate.getUTCFullYear();
-  const month = referenceDate.getUTCMonth() + 1; // 1-12
-  return month < 6 ? year - 1 : year;
-}
-
 export async function fetchDailyPrecipitation(
   municipality: Municipality,
   startDate: string,
@@ -34,20 +32,69 @@ export async function fetchDailyPrecipitation(
   url.searchParams.set("longitude", String(municipality.longitude));
   url.searchParams.set("start_date", startDate);
   url.searchParams.set("end_date", endDate);
-  url.searchParams.set("daily", "precipitation_sum");
-  url.searchParams.set("timezone", "auto");
+  url.searchParams.set("daily", DAILY_VARIABLES.join(","));
+  // ERA5-Land omits precipitation and ET0 in Open-Meteo's archive response.
+  // ERA5 supplies the complete daily set required by this frozen contract.
+  url.searchParams.set("models", "era5");
+  // A fixed daily boundary keeps the live path reproducible with fixtures.
+  url.searchParams.set("timezone", "UTC");
 
-  const res = await fetchImpl(url.toString());
-  if (!res.ok) {
-    throw new ClimateFetchError(`Open-Meteo archive request failed: ${res.status}`);
+  let res: Response;
+  try {
+    res = await fetchImpl(url.toString(), { signal: AbortSignal.timeout(30_000) });
+  } catch (error) {
+    throw new ClimateFetchError(`Open-Meteo archive request failed: ${error instanceof Error ? error.message : "unknown error"}`);
   }
-  const body = (await res.json()) as { daily?: { time: string[]; precipitation_sum: (number | null)[] } };
-  if (!body.daily) {
+  if (!res.ok) {
+    const kind = res.status === 429 ? "rate limited" : `failed: ${res.status}`;
+    throw new ClimateFetchError(`Open-Meteo archive request ${kind}`);
+  }
+  const body = (await res.json()) as {
+    daily?: {
+      time?: string[];
+      precipitation_sum?: (number | null)[];
+      et0_fao_evapotranspiration?: (number | null)[];
+      temperature_2m_min?: (number | null)[];
+      temperature_2m_max?: (number | null)[];
+    };
+    daily_units?: { precipitation_sum?: string; et0_fao_evapotranspiration?: string; temperature_2m_min?: string; temperature_2m_max?: string };
+  };
+  if (
+    !body.daily?.time ||
+    !body.daily.precipitation_sum ||
+    !body.daily.et0_fao_evapotranspiration ||
+    !body.daily.temperature_2m_min ||
+    !body.daily.temperature_2m_max
+  ) {
     throw new ClimateFetchError("Open-Meteo archive response missing daily series");
+  }
+  const units = body.daily_units;
+  if (
+    units?.precipitation_sum !== "mm" ||
+    units.et0_fao_evapotranspiration !== "mm" ||
+    units.temperature_2m_min !== "°C" ||
+    units.temperature_2m_max !== "°C"
+  ) {
+    throw new ClimateFetchError("Open-Meteo archive response has unexpected daily units");
+  }
+  const series = Object.entries({
+    precipitation_sum: body.daily.precipitation_sum,
+    et0_fao_evapotranspiration: body.daily.et0_fao_evapotranspiration,
+    temperature_2m_min: body.daily.temperature_2m_min,
+    temperature_2m_max: body.daily.temperature_2m_max,
+  });
+  for (const [name, values] of series) {
+    if (values.length !== body.daily.time.length) {
+      throw new ClimateFetchError(`Open-Meteo archive response has mismatched ${name} series length`);
+    }
+    const cannotBeNegative = name !== "temperature_2m_min" && name !== "temperature_2m_max";
+    if (values.some((value) => value === null || !Number.isFinite(value) || (cannotBeNegative && value < 0))) {
+      throw new ClimateFetchError(`Open-Meteo archive response has missing or invalid ${name}`);
+    }
   }
   return {
     dates: body.daily.time,
-    precipitationMm: body.daily.precipitation_sum.map((v) => v ?? 0),
+    precipitationMm: body.daily.precipitation_sum.map((value) => value as number),
   };
 }
 
@@ -97,6 +144,19 @@ function buildSeasonRecords(daily: DailyPrecipitation, latestEndYear: number): H
   return records;
 }
 
+function assertCompleteClimatePeriod(daily: DailyPrecipitation): void {
+  const expectedDays = daysBetween(CLIMATE_PERIOD_START, CLIMATE_PERIOD_END) + 1;
+  if (daily.dates.length !== expectedDays) {
+    throw new ClimateFetchError(`Open-Meteo archive response has ${daily.dates.length} days; expected ${expectedDays}`);
+  }
+  for (let index = 0; index < expectedDays; index++) {
+    const expectedDate = addDays(CLIMATE_PERIOD_START, index);
+    if (daily.dates[index] !== expectedDate) {
+      throw new ClimateFetchError(`Open-Meteo archive response is missing or misordered day ${expectedDate}`);
+    }
+  }
+}
+
 /**
  * Fetches ~41 years of daily precipitation in a single Open-Meteo Archive
  * (ERA5) call and derives one declared "end of rains" day per agricultural
@@ -106,33 +166,18 @@ function buildSeasonRecords(daily: DailyPrecipitation, latestEndYear: number): H
 export async function fetchHistoricalSeasons(
   municipality: Municipality,
   fetchImpl: FetchFn = fetch,
-  referenceDate: Date = new Date(),
 ): Promise<HistoricalDataset> {
-  const latestEndYear = latestCompleteSeasonEndYear(referenceDate);
-  const earliestStartYear = latestEndYear - NUM_SEASONS;
-
-  // The archive endpoint only serves the past, with a short reporting lag —
-  // never request a date later than that, even if the season's nominal
-  // window (Aug 31) hasn't happened yet.
-  const latestAvailableDate = addDays(toIsoDate(referenceDate), -ARCHIVE_REPORTING_LAG_DAYS);
-  const requestedEndDate = `${latestEndYear}-${DRY_DOWN_SEARCH_END_MONTH_DAY}`;
-  const endDate = requestedEndDate < latestAvailableDate ? requestedEndDate : latestAvailableDate;
-
-  const daily = await fetchDailyPrecipitation(
-    municipality,
-    `${earliestStartYear}-${SEASON_START_MONTH_DAY}`,
-    endDate,
-    fetchImpl,
-  );
+  const daily = await fetchDailyPrecipitation(municipality, CLIMATE_PERIOD_START, CLIMATE_PERIOD_END, fetchImpl);
+  assertCompleteClimatePeriod(daily);
 
   return {
     location: municipality,
-    source: "open-meteo:archive-api (ERA5, precipitation_sum)",
+    source: `open-meteo:archive-api (ERA5; ${CLIMATE_PERIOD_START}..${CLIMATE_PERIOD_END}; daily UTC)`,
     seasons: NUM_SEASONS,
     cached: false,
     real: true,
     retrievedAt: new Date().toISOString(),
-    variables: ["precipitation_sum"],
-    records: buildSeasonRecords(daily, latestEndYear),
+    variables: [...DAILY_VARIABLES],
+    records: buildSeasonRecords(daily, 2026),
   };
 }

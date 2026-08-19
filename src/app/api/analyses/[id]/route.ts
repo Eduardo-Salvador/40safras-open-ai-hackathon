@@ -4,7 +4,10 @@ import { AUTH_COOKIE_NAME, verifySessionToken } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
   if (!verifySessionToken(req.cookies.get(AUTH_COOKIE_NAME)?.value)) {
     return NextResponse.json({ error: "authentication required" }, { status: 401 });
   }

@@ -2,7 +2,9 @@ import type { FarmOperationInput } from "./schemas";
 
 /** Currency math happens in integer cents; callers convert back to reais. */
 function toCents(reais: number): number {
-  return Math.round(reais * 100);
+  const absolute = Math.abs(reais);
+  const roundingTolerance = Number.EPSILON * Math.max(1, absolute) * 100;
+  return Math.sign(reais) * Math.round(absolute * 100 + roundingTolerance);
 }
 
 export function centsToReais(cents: number): number {
