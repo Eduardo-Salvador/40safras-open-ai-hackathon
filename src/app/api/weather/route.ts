@@ -14,8 +14,9 @@ export async function GET(request: NextRequest) {
   try {
     return NextResponse.json(await fetchWeatherForecast(latitude, longitude));
   } catch (error) {
+    console.error("weather forecast failed", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "weather forecast failed" },
+      { error: "Não foi possível consultar a previsão agora." },
       { status: 502 },
     );
   }

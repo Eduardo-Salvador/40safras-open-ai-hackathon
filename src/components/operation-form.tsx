@@ -7,9 +7,11 @@ import stripStyles from "./season-strip.module.css";
 import { buildPlan } from "@/domain/planner";
 import {
   FarmOperationInputSchema,
+  OperationDraftSchema,
   type FarmOperationInput,
   type HistoricalDataset,
   type Municipality,
+  type OperationDraft,
   type PlanResult,
   type ReplanResult,
 } from "@/domain/schemas";
@@ -69,8 +71,8 @@ const FIELDS: FarmOperationInput["fields"] = [
 ];
 
 const SEED_LOTS: FarmOperationInput["seedLots"] = [
-  { id: "SOJA-98", crop: "soybean", cycleDays: 98, availableAreaHa: 480 },
-  { id: "SOJA-112", crop: "soybean", cycleDays: 112, availableAreaHa: 370 },
+  { id: "SOJA-98", crop: "soybean", cycleDays: 98, availableAreaHa: 580 },
+  { id: "SOJA-112", crop: "soybean", cycleDays: 112, availableAreaHa: 270 },
 ];
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -78,7 +80,9 @@ const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "
 export function OperationForm() {
   const voiceControllerRef = useRef<RealtimeVoiceController | null>(null);
   const [inputMode, setInputMode] = useState<InputMode>("voice");
-  const [voiceStatus, setVoiceStatus] = useState<"idle" | "connecting" | "listening" | "error">("idle");
+  const [voiceStatus, setVoiceStatus] = useState<"idle" | "connecting" | "listening" | "processing" | "ready" | "parsing" | "error">("idle");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceReview, setVoiceReview] = useState<string[]>([]);
   const [naturalBrief, setNaturalBrief] = useState(PREPARED_BRIEF);
   const [journeyStage, setJourneyStage] = useState<JourneyStage>("report");
   const [draftSource, setDraftSource] = useState<InputMode>("voice");
@@ -95,6 +99,8 @@ export function OperationForm() {
   const [soybeanMarginPerHa, setSoybeanMarginPerHa] = useState(1850);
   const [cornMarginPerHa, setCornMarginPerHa] = useState(1200);
   const [operatingCostPerDay, setOperatingCostPerDay] = useState<number | "">("");
+  const [fields, setFields] = useState<FarmOperationInput["fields"]>(FIELDS);
+  const [seedLots, setSeedLots] = useState<FarmOperationInput["seedLots"]>(SEED_LOTS);
 
   const [plan, setPlan] = useState<PlanResult | null>(null);
   const [lastInput, setLastInput] = useState<FarmOperationInput | null>(null);
@@ -103,13 +109,62 @@ export function OperationForm() {
 
   useEffect(() => () => voiceControllerRef.current?.close(), []);
 
+  function applyOperationDraft(draft: OperationDraft) {
+    const place = [draft.municipalityQuery?.name, draft.municipalityQuery?.state].filter(Boolean).join(", ");
+    if (place) setMunicipalityQuery(place);
+    if (draft.totalAreaHa !== undefined) setTotalAreaHa(draft.totalAreaHa);
+    if (draft.planterCapacityHaPerDay !== undefined) {
+      setPlanterCount(1);
+      setPlanterCapacityHaPerDay(draft.planterCapacityHaPerDay);
+    }
+    if (draft.startDate) setStartDate(draft.startDate);
+    if (draft.secondCropTargetAreaHa !== undefined) setSecondCropTargetAreaHa(draft.secondCropTargetAreaHa);
+    if (draft.finance?.soybeanMarginPerHa !== undefined) setSoybeanMarginPerHa(draft.finance.soybeanMarginPerHa);
+    if (draft.finance?.cornMarginPerHa !== undefined) setCornMarginPerHa(draft.finance.cornMarginPerHa);
+    if (draft.finance?.operatingCostPerDay !== undefined) setOperatingCostPerDay(draft.finance.operatingCostPerDay);
+
+    const completeFields = draft.fields.flatMap((field) => field.areaHa === undefined ? [] : [{
+      id: field.id,
+      areaHa: field.areaHa,
+      priority: field.secondCropEligible === undefined
+        ? fields.find((current) => current.id === field.id)?.priority ?? "soy_only" as const
+        : field.secondCropEligible ? "second_crop" as const : "soy_only" as const,
+    }]);
+    if (completeFields.length > 0) setFields(completeFields);
+
+    const completeLots = draft.seedLots.flatMap((lot) =>
+      lot.crop !== "soybean" || lot.cycleDays === undefined || lot.availableAreaHa === undefined
+        ? []
+        : [{ id: lot.id, crop: "soybean" as const, cycleDays: lot.cycleDays, availableAreaHa: lot.availableAreaHa }],
+    );
+    if (completeLots.length > 0) setSeedLots(completeLots);
+    setVoiceReview([
+      ...draft.missingFields.map((field) => `Falta confirmar: ${field}`),
+      ...draft.ambiguities.map((item) => `Dado ambíguo: ${item}`),
+    ]);
+  }
+
+  function closeVoiceSession() {
+    voiceControllerRef.current?.close();
+    voiceControllerRef.current = null;
+  }
+
   async function toggleVoice() {
     if (voiceControllerRef.current) {
-      voiceControllerRef.current.stopPushToTalk();
-      voiceControllerRef.current.close();
-      voiceControllerRef.current = null;
-      setVoiceStatus("idle");
-      beginCompletion("voice");
+      if (voiceStatus === "listening") {
+        voiceControllerRef.current.stopPushToTalk();
+        setVoiceStatus("processing");
+        window.setTimeout(() => {
+          setVoiceStatus((current) => {
+            if (current !== "processing") return current;
+            setError("A transcrição demorou mais que o esperado. Tente falar novamente ou use o modo digitado.");
+            return "error";
+          });
+        }, 8_000);
+      } else {
+        voiceControllerRef.current.startPushToTalk();
+        setVoiceStatus("listening");
+      }
       return;
     }
 
@@ -117,8 +172,18 @@ export function OperationForm() {
     setError(null);
     try {
       const controller = await connectRealtimeVoiceSession(crypto.randomUUID(), {
+        onTranscript: (transcript) => {
+          setVoiceTranscript((current) => current ? `${current} ${transcript}` : transcript);
+          setNaturalBrief((current) => current === PREPARED_BRIEF ? transcript : `${current} ${transcript}`);
+          setVoiceStatus((current) => current === "processing" ? "ready" : current);
+        },
+        onError: () => {
+          closeVoiceSession();
+          setVoiceStatus("error");
+          setError("A sessão de voz foi interrompida. A transcrição já recebida continua disponível.");
+        },
         updateOperationDraft: ({ draft }) => {
-          setNaturalBrief(JSON.stringify(draft));
+          applyOperationDraft(draft);
           return { ok: true, message: "Rascunho atualizado. Continue a conversa e confirme os dados com o produtor." };
         },
         requestOperationConfirmation: ({ draftVersion }) => ({
@@ -127,10 +192,7 @@ export function OperationForm() {
           confirmationToken: `voice-${draftVersion}`,
           message: "Leia o resumo e peça uma confirmação explícita." ,
         }),
-        confirmOperationAndCalculate: ({ affirmative }) => {
-          if (affirmative) beginCompletion("voice");
-          return { ok: affirmative, message: affirmative ? "Confirmação registrada. A interface avançou para a localização." : "Confirmação negada." };
-        },
+        confirmOperationAndCalculate: ({ affirmative }) => ({ ok: affirmative, message: "A confirmação final será feita na interface depois da revisão dos campos." }),
         updateFieldEventDraft: () => ({ ok: true }),
         requestFieldEventConfirmation: ({ draftVersion }) => ({ ok: true, draftVersion, confirmationToken: `event-${draftVersion}` }),
         confirmFieldEvent: ({ affirmative }) => ({ ok: affirmative }),
@@ -139,8 +201,36 @@ export function OperationForm() {
       controller.startPushToTalk();
       setVoiceStatus("listening");
     } catch {
+      closeVoiceSession();
       setVoiceStatus("error");
       setError("Não foi possível abrir o microfone agora. Você pode tentar novamente ou digitar o relato.");
+    }
+  }
+
+  async function useVoiceTranscript() {
+    const transcript = voiceTranscript.trim();
+    if (!transcript) {
+      setError("Ainda não recebemos uma transcrição. Fale novamente e aguarde o texto aparecer.");
+      return;
+    }
+    closeVoiceSession();
+    setVoiceStatus("parsing");
+    setError(null);
+    try {
+      const response = await fetch("/api/parse-brief", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: transcript }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "não foi possível organizar a transcrição");
+      const draft = OperationDraftSchema.parse(body.draft);
+      applyOperationDraft(draft);
+      setVoiceStatus("ready");
+      beginCompletion("voice");
+    } catch {
+      setVoiceStatus("ready");
+      setError("A fala foi transcrita, mas não conseguimos organizar os campos. Revise pelo modo digitado.");
     }
   }
 
@@ -194,8 +284,8 @@ export function OperationForm() {
       startDate,
       firstCrop: "soybean",
       secondCrop: "corn",
-      fields: FIELDS,
-      seedLots: SEED_LOTS,
+      fields,
+      seedLots,
       secondCropTargetAreaHa,
       finance: {
         soybeanMarginPerHa,
@@ -225,9 +315,15 @@ export function OperationForm() {
 
   function handleConfirmAndCalculate() {
     if (!lastInput) return;
-    setPlan(buildPlan(lastInput, dataset));
-    setReplan(null);
-    setJourneyStage("plan");
+    try {
+      setPlan(buildPlan(lastInput, dataset));
+      setReplan(null);
+      setError(null);
+      setJourneyStage("plan");
+    } catch (cause) {
+      setPlan(null);
+      setError(cause instanceof Error ? cause.message : "Não foi possível montar o plano com estes dados.");
+    }
   }
 
   const currentStepIndex = JOURNEY_STEPS.findIndex((step) => step.id === journeyStage);
@@ -303,19 +399,37 @@ export function OperationForm() {
                         <li>sementes, tempo de ciclo e meta de milho.</li>
                       </ul>
                     </div>
-                    <button type="button" className={styles.voiceButton} onClick={toggleVoice} disabled={voiceStatus === "connecting"} aria-pressed={voiceStatus === "listening"}>
+                    <button type="button" className={styles.voiceButton} onClick={toggleVoice} disabled={voiceStatus === "connecting" || voiceStatus === "processing" || voiceStatus === "parsing"} aria-pressed={voiceStatus === "listening"}>
                       <span className={styles.voiceIcon} aria-hidden="true">
                         <svg className={styles.microphoneIcon} viewBox="0 0 24 24" fill="none" focusable="false" aria-hidden="true">
                           <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" stroke="currentColor" strokeWidth="1.8" />
                           <path d="M18 11a6 6 0 0 1-12 0M12 17v4M8 21h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                         </svg>
                       </span>
-                      <strong>{voiceStatus === "connecting" ? "Conectando…" : voiceStatus === "listening" ? "Ouvindo — toque para concluir" : "Toque para falar"}</strong>
-                      <small>{voiceStatus === "listening" ? "Converse com o assistente e confirme seu relato por voz" : "Fale como se estivesse explicando para alguém da sua equipe"}</small>
+                      <strong>
+                        {voiceStatus === "connecting" ? "Conectando…"
+                          : voiceStatus === "listening" ? "Ouvindo — toque para parar"
+                          : voiceStatus === "processing" ? "Processando sua fala…"
+                          : voiceTranscript ? "Falar mais" : "Começar a falar"}
+                      </strong>
+                      <small>{voiceStatus === "listening" ? "Fale normalmente; o texto aparecerá abaixo" : "O avanço só será liberado depois da transcrição"}</small>
                     </button>
                     <p className={styles.voicePreparedNote}>
-                      {voiceStatus === "error" ? "A voz está indisponível; use o caminho digitado abaixo." : "Voz em tempo real com confirmação explícita antes do cálculo."}
+                      {voiceStatus === "error" ? "A voz foi interrompida; tente novamente ou use o caminho digitado." : "A IA organiza a fala, mas você confere os campos antes do cálculo."}
                     </p>
+                    <div className={styles.transcriptBox} aria-live="polite">
+                      <strong>Transcrição</strong>
+                      <p>{voiceTranscript || "Sua fala aparecerá aqui para você conferir."}</p>
+                    </div>
+                    {voiceReview.length > 0 && <ul className={styles.voiceReview}>{voiceReview.map((item) => <li key={item}>{item}</li>)}</ul>}
+                    <button
+                      type="button"
+                      className={styles.ctaPrimary}
+                      onClick={useVoiceTranscript}
+                      disabled={!voiceTranscript.trim() || voiceStatus === "connecting" || voiceStatus === "listening" || voiceStatus === "processing" || voiceStatus === "parsing"}
+                    >
+                      {voiceStatus === "parsing" ? "Organizando dados…" : "Usar esta transcrição →"}
+                    </button>
                   </div>
                   <button type="button" className={styles.typeInvite} onClick={() => setInputMode("text")}>
                     Prefere digitar? <strong>Clique aqui</strong>
@@ -512,15 +626,16 @@ export function OperationForm() {
                   </div>
                 </div>
                 <ul className={detailsStyles.itemList} aria-label="Talhões informados">
-                  {FIELDS.map((field) => (
+                  {fields.map((field) => (
                     <li key={field.id} className={detailsStyles.itemCard}>
                       <div>
                         <strong>{field.id}</strong>
-                        <span>{field.areaHa} ha</span>
+                        <span>Confira área e uso na segunda safra</span>
                       </div>
-                      <span className={styles.priorityPill} data-priority={field.priority}>
-                        {field.priority === "second_crop" ? "soja e milho" : "só soja"}
-                      </span>
+                      <div className={detailsStyles.itemEditor}>
+                        <label>Área (ha)<input type="number" min="1" value={field.areaHa} onChange={(event) => { setFields((current) => current.map((item) => item.id === field.id ? { ...item, areaHa: Number(event.target.value) } : item)); invalidateConfirmation(); }} /></label>
+                        <label>Uso<select value={field.priority} onChange={(event) => { setFields((current) => current.map((item) => item.id === field.id ? { ...item, priority: event.target.value as "second_crop" | "soy_only" } : item)); invalidateConfirmation(); }}><option value="second_crop">soja e milho</option><option value="soy_only">só soja</option></select></label>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -535,13 +650,16 @@ export function OperationForm() {
                   </div>
                 </div>
                 <ul className={detailsStyles.itemList} aria-label="Sementes informadas">
-                  {SEED_LOTS.map((seed) => (
-                    <li key={seed.cycleDays} className={detailsStyles.itemCard}>
+                  {seedLots.map((seed) => (
+                    <li key={seed.id} className={detailsStyles.itemCard}>
                       <div>
-                        <strong>Soja de {seed.cycleDays} dias</strong>
-                        <span>colhe em cerca de {seed.cycleDays} dias</span>
+                        <strong>{seed.id}</strong>
+                        <span>Confira ciclo e cobertura do lote</span>
                       </div>
-                      <span className={detailsStyles.areaBadge}>cobre {seed.availableAreaHa} ha</span>
+                      <div className={detailsStyles.itemEditor}>
+                        <label>Ciclo (dias)<input type="number" min="1" value={seed.cycleDays} onChange={(event) => { setSeedLots((current) => current.map((item) => item.id === seed.id ? { ...item, cycleDays: Number(event.target.value) } : item)); invalidateConfirmation(); }} /></label>
+                        <label>Cobre (ha)<input type="number" min="1" value={seed.availableAreaHa} onChange={(event) => { setSeedLots((current) => current.map((item) => item.id === seed.id ? { ...item, availableAreaHa: Number(event.target.value) } : item)); invalidateConfirmation(); }} /></label>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -644,6 +762,7 @@ export function OperationForm() {
                 Está tudo certo →
               </button>
             </div>
+            {error && <p className={styles.submitNote} style={{ color: "var(--risk)" }}>{error}</p>}
           </div>
         )}
 
@@ -667,6 +786,7 @@ export function OperationForm() {
                 Confirmar e montar plano →
               </button>
             </div>
+            {error && <p className={styles.submitNote} style={{ color: "var(--risk)" }}>{error}</p>}
           </div>
         )}
 
@@ -685,7 +805,7 @@ export function OperationForm() {
             <TerritoryEditor embedded />
           </div>
           <SeasonStrip
-            totalAreaHa={FIELDS.filter((f) => f.priority === "second_crop").reduce((s, f) => s + f.areaHa, 0)}
+            totalAreaHa={fields.filter((f) => f.priority === "second_crop").reduce((s, f) => s + f.areaHa, 0)}
             seasons={plan.historicalOutcomes.map((o) => ({ label: o.season, areaHa: o.secondCropViableAreaHa }))}
             eyebrow="Como este plano se saiu"
             heading={`Veja o resultado nas 41 safras de ${municipality.name}/${municipality.state}.`}

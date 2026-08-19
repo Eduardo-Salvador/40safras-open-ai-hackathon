@@ -3,6 +3,7 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import {
   FieldEventDraftSchema,
+  BrazilianStateCodeSchema,
   OperationDraftSchema,
   PlanResultSchema,
   type FieldEventDraft,
@@ -19,7 +20,7 @@ const MAX_ATTEMPTS = 2;
 
 export const OperationDraftExtractionSchema = z.object({
   municipalityName: z.string().nullable(),
-  municipalityState: z.string().length(2).nullable(),
+  municipalityState: BrazilianStateCodeSchema.nullable(),
   totalAreaHa: z.number().positive().nullable(),
   planterCapacityHaPerDay: z.number().positive().nullable(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
