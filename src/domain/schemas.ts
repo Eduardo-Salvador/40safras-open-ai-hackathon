@@ -23,6 +23,29 @@ export type CropProfile = z.infer<typeof CropProfileSchema>;
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
 
+export const OperationDraftSchema = z.object({
+  rawText: z.string(),
+  municipalityQuery: z.string().nullable(),
+  startDate: isoDate.nullable(),
+  totalAreaHa: z.number().positive().nullable(),
+  planterCapacityHaPerDay: z.number().positive().nullable(),
+  secondCropTargetAreaHa: z.number().nonnegative().nullable(),
+  soybeanMarginPerHa: z.number().nullable(),
+  cornMarginPerHa: z.number().nullable(),
+  operatingCostPerDay: z.number().nullable(),
+  missingFields: z.array(z.string()),
+  ambiguities: z.array(z.string()),
+});
+export type OperationDraft = z.infer<typeof OperationDraftSchema>;
+
+export const ConfirmationSchema = z.object({
+  draftVersion: z.number().int().positive(),
+  token: z.string().min(8),
+  method: z.enum(["button", "voice"]),
+  confirmedAt: z.string().datetime(),
+});
+export type Confirmation = z.infer<typeof ConfirmationSchema>;
+
 export const FieldBlockSchema = z.object({
   id: z.string().min(1),
   areaHa: z.number().positive(),
@@ -96,6 +119,18 @@ export const FieldEventSchema = z.object({
 });
 export type FieldEvent = z.infer<typeof FieldEventSchema>;
 
+export const FieldEventDraftSchema = z.object({
+  rawText: z.string(),
+  eventType: z.enum(["block", "excess_rain", "seed_loss", "machine_failure", "other"]),
+  severity: z.enum(["operational", "critical"]),
+  effectiveDate: isoDate,
+  blockedFieldIds: z.array(z.string()),
+  blockedUntil: isoDate.nullable(),
+  notes: z.array(z.string()),
+  missingFields: z.array(z.string()),
+});
+export type FieldEventDraft = z.infer<typeof FieldEventDraftSchema>;
+
 export const PlanResultSchema = z.object({
   inputHash: z.string(),
   datasetHash: z.string(),
@@ -110,6 +145,20 @@ export const PlanResultSchema = z.object({
       secondCropCandidate: z.boolean(),
     }),
   ),
+  baseline: z.object({
+    sequence: z.array(
+      z.object({
+        fieldId: z.string(),
+        cycleDays: z.number().int().positive(),
+        startDate: isoDate,
+        endDate: isoDate,
+        secondCropCandidate: z.boolean(),
+      }),
+    ),
+    financialP20: z.number(),
+    secondCropAreaP20Ha: z.number().nonnegative(),
+    viableSeasons: z.number().int().nonnegative(),
+  }).optional(),
   historicalOutcomes: z.array(
     z.object({
       season: z.string(),

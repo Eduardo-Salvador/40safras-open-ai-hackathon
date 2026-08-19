@@ -26,13 +26,13 @@ export default function Home() {
             climáticas reais antes de qualquer número aparecer na tela.
           </p>
           <div className={styles.ctaRow}>
-            <button className={styles.ctaPrimary} type="button">
+            <a className={styles.ctaPrimary} href="#operacao" style={{ textDecoration: "none" }}>
               <span className={styles.micDot} aria-hidden="true" />
               Falar agora
-            </button>
-            <button className={styles.ctaSecondary} type="button">
+            </a>
+            <a className={styles.ctaSecondary} href="#operacao" style={{ textDecoration: "none" }}>
               Usar texto
-            </button>
+            </a>
           </div>
           <p className={styles.heroNote}>
             Isto é decisão de apoio, não orientação ZARC, agronômica, financeira,
@@ -40,7 +40,7 @@ export default function Home() {
           </p>
         </header>
 
-        <section className={styles.section}>
+        <section className={styles.section} id="operacao">
           <SeasonStrip totalAreaHa={TOTAL_AREA_HA} />
         </section>
 
@@ -49,9 +49,9 @@ export default function Home() {
             <p className={styles.eyebrow}>Briefing da operação</p>
             <h2 className={styles.sectionTitle}>O que a IA confirma antes de calcular.</h2>
             <p className={styles.sectionSub}>
-              Hoje o formulário roda o motor determinístico local, com a fixture climática
-              de Sorriso/MT. A conversa por voz e a geocodificação ao vivo entram nas
-              próximas etapas do build.
+              Fale, escreva livremente ou preencha o formulário. A IA estrutura o relato;
+              o motor determinístico calcula com ERA5 ao vivo ou com a fixture offline
+              rastreável de Sorriso/MT.
             </p>
           </div>
 

@@ -10,13 +10,17 @@ import {
   type FarmOperationInput,
   type FieldEvent,
   type HistoricalDataset,
+  type FieldEventDraft,
   type Municipality,
+  type OperationDraft,
   type PlanResult,
   type ReplanResult,
 } from "@/domain/schemas";
 import { buildPlanWhatsAppMessage, buildReplanWhatsAppMessage, buildWhatsAppShareUrl } from "@/lib/whatsapp";
 import { sorrisoMt, sorrisoMt41Seasons } from "../../data/fixtures/municipalities/sorriso-mt";
 import { SeasonStrip } from "./season-strip";
+import { VoiceInput } from "./voice-input";
+import { buildTelegramShareUrl, shareOrCopy } from "@/lib/sharing";
 
 type ClimateStatus = "fixture" | "loading" | "live" | "error";
 
@@ -30,13 +34,20 @@ const FIELDS: FarmOperationInput["fields"] = [
 ];
 
 const SEED_LOTS: FarmOperationInput["seedLots"] = [
-  { crop: "soybean", cycleDays: 98, availableAreaHa: 480 },
-  { crop: "soybean", cycleDays: 112, availableAreaHa: 370 },
+  { crop: "soybean", cycleDays: 98, availableAreaHa: 580 },
+  { crop: "soybean", cycleDays: 112, availableAreaHa: 270 },
 ];
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 export function OperationForm() {
+  const [entryMode, setEntryMode] = useState<"voice" | "text" | "form">("form");
+  const [naturalBrief, setNaturalBrief] = useState("Sorriso, MT. Início 2025-09-15, área total 850 ha, capacidade 45 ha/dia e meta de 580 ha de milho.");
+  const [draft, setDraft] = useState<OperationDraft | null>(null);
+  const [draftSource, setDraftSource] = useState<"openai" | "prepared-fallback" | null>(null);
+  const [parsingBrief, setParsingBrief] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [draftVersion, setDraftVersion] = useState(1);
   const [municipalityQuery, setMunicipalityQuery] = useState("Sorriso");
   const [municipality, setMunicipality] = useState<Municipality>(sorrisoMt);
   const [dataset, setDataset] = useState<HistoricalDataset>(sorrisoMt41Seasons);
@@ -55,6 +66,50 @@ export function OperationForm() {
   const [lastInput, setLastInput] = useState<FarmOperationInput | null>(null);
   const [replan, setReplan] = useState<ReplanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [eventText, setEventText] = useState("Chuva forte alagou o talhão T-01 em 2025-09-15.");
+  const [eventDraft, setEventDraft] = useState<FieldEventDraft | null>(null);
+  const [eventSource, setEventSource] = useState<"openai" | "prepared-fallback" | null>(null);
+  const [eventConfirmed, setEventConfirmed] = useState(false);
+  const [shareAuthorized, setShareAuthorized] = useState(false);
+  const [shareNote, setShareNote] = useState<string | null>(null);
+
+  function invalidateConfirmation() {
+    setConfirmed(false);
+    setDraftVersion((version) => version + 1);
+    setPlan(null);
+    setReplan(null);
+    setShareAuthorized(false);
+  }
+
+  async function handleParseBrief() {
+    setParsingBrief(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/parse-brief", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: naturalBrief }),
+      });
+      const body = (await response.json()) as { draft?: OperationDraft; source?: "openai" | "prepared-fallback"; error?: string };
+      if (!response.ok || !body.draft || !body.source) throw new Error(body.error ?? "não foi possível estruturar o relato");
+      setDraft(body.draft);
+      setDraftSource(body.source);
+      if (body.draft.municipalityQuery) setMunicipalityQuery(body.draft.municipalityQuery);
+      if (body.draft.startDate) setStartDate(body.draft.startDate);
+      if (body.draft.totalAreaHa !== null) setTotalAreaHa(body.draft.totalAreaHa);
+      if (body.draft.planterCapacityHaPerDay !== null) setPlanterCapacityHaPerDay(body.draft.planterCapacityHaPerDay);
+      if (body.draft.secondCropTargetAreaHa !== null) setSecondCropTargetAreaHa(body.draft.secondCropTargetAreaHa);
+      if (body.draft.soybeanMarginPerHa !== null) setSoybeanMarginPerHa(body.draft.soybeanMarginPerHa);
+      if (body.draft.cornMarginPerHa !== null) setCornMarginPerHa(body.draft.cornMarginPerHa);
+      if (body.draft.operatingCostPerDay !== null) setOperatingCostPerDay(body.draft.operatingCostPerDay);
+      invalidateConfirmation();
+      setEntryMode("form");
+    } catch (parseError) {
+      setError(parseError instanceof Error ? parseError.message : "falha ao estruturar relato");
+    } finally {
+      setParsingBrief(false);
+    }
+  }
 
   async function handleLoadClimate() {
     setClimateStatus("loading");
@@ -77,6 +132,7 @@ export function OperationForm() {
       setDataset(climateBody.dataset);
       setClimateStatus(climateBody.fallback ? "fixture" : "live");
       setClimateNote(climateBody.fallback ? "consulta ao vivo indisponível; fixture offline identificada" : null);
+      invalidateConfirmation();
     } catch (err) {
       setMunicipality(sorrisoMt);
       setDataset(sorrisoMt41Seasons);
@@ -110,26 +166,91 @@ export function OperationForm() {
       return;
     }
 
-    setError(null);
-    setPlan(buildPlan(parsed.data, dataset));
-    setLastInput(parsed.data);
-    setReplan(null);
+    if (!confirmed) {
+      setError("Revise o resumo e confirme esta versão antes de calcular.");
+      setLastInput(parsed.data);
+      return;
+    }
+
+    try {
+      setError(null);
+      setPlan(buildPlan(parsed.data, dataset));
+      setLastInput(parsed.data);
+      setReplan(null);
+    } catch (planError) {
+      setPlan(null);
+      setError(planError instanceof Error ? planError.message : "falha ao calcular o plano");
+    }
   }
 
-  const FIELD_EVENT: FieldEvent = {
-    effectiveDate: startDate,
-    blockedFieldIds: ["T-01"],
-    seedDeltaAreaHaByCycle: {},
-    notes: ["chuva forte alagou o talhão T-01"],
-  };
+  async function handleParseEvent() {
+    setError(null);
+    const response = await fetch("/api/parse-event", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: eventText, defaultDate: startDate }),
+    });
+    const body = (await response.json()) as { draft?: FieldEventDraft; source?: "openai" | "prepared-fallback"; error?: string };
+    if (!response.ok || !body.draft || !body.source) {
+      setError(body.error ?? "não foi possível estruturar o evento");
+      return;
+    }
+    setEventDraft(body.draft);
+    setEventSource(body.source);
+    setEventConfirmed(false);
+    setShareAuthorized(false);
+  }
 
   function handleApplyEvent() {
-    if (!lastInput) return;
-    setReplan(buildReplan(lastInput, dataset, FIELD_EVENT));
+    if (!lastInput || !eventDraft || !eventConfirmed) return;
+    const event: FieldEvent = {
+      effectiveDate: eventDraft.effectiveDate,
+      blockedFieldIds: eventDraft.blockedFieldIds,
+      blockedUntil: eventDraft.blockedUntil ?? undefined,
+      seedDeltaAreaHaByCycle: {},
+      notes: eventDraft.notes,
+    };
+    setReplan(buildReplan(lastInput, dataset, event));
+    setShareAuthorized(false);
   }
 
   return (
     <div className={styles.ledger}>
+      <div className={styles.entryModes} role="group" aria-label="Modo de entrada">
+        <button type="button" className={entryMode === "voice" ? styles.modeActive : styles.ctaSecondary} onClick={() => setEntryMode("voice")}>Falar</button>
+        <button type="button" className={entryMode === "text" ? styles.modeActive : styles.ctaSecondary} onClick={() => setEntryMode("text")}>Escrever livremente</button>
+        <button type="button" className={entryMode === "form" ? styles.modeActive : styles.ctaSecondary} onClick={() => setEntryMode("form")}>Preencher formulário</button>
+      </div>
+
+      {entryMode === "voice" && (
+        <VoiceInput onTranscript={(transcript) => {
+          setNaturalBrief((current) => current ? `${current} ${transcript}` : transcript);
+          setEntryMode("text");
+          invalidateConfirmation();
+        }} />
+      )}
+
+      {entryMode === "text" && (
+        <div className={styles.freeTextPanel}>
+          <label htmlFor="natural-brief">Relato da operação em português</label>
+          <textarea id="natural-brief" value={naturalBrief} onChange={(event) => {
+            setNaturalBrief(event.target.value);
+            invalidateConfirmation();
+          }} rows={5} />
+          <button type="button" className={styles.ctaPrimary} onClick={handleParseBrief} disabled={parsingBrief}>
+            {parsingBrief ? "Organizando…" : "Organizar relato"}
+          </button>
+          <span className={styles.submitNote}>A IA apenas estrutura o relato; datas derivadas, clima e dinheiro ficam no código determinístico.</span>
+        </div>
+      )}
+
+      {draft && (
+        <div className={styles.draftNotice}>
+          <strong>Rascunho v{draftVersion} · {draftSource === "openai" ? "OpenAI" : "fallback preparado"}</strong>
+          <span>{draft.missingFields.length ? `Ainda faltam: ${draft.missingFields.join(", ")}.` : "Campos principais identificados; revise o formulário abaixo."}</span>
+        </div>
+      )}
+
       <div className={styles.ledgerRow}>
         <div className={styles.field}>
           <label htmlFor="municipality">Município</label>
@@ -137,7 +258,7 @@ export function OperationForm() {
             <input
               id="municipality"
               value={municipalityQuery}
-              onChange={(e) => setMunicipalityQuery(e.target.value)}
+              onChange={(e) => { setMunicipalityQuery(e.target.value); invalidateConfirmation(); }}
               placeholder="ex: Sorriso, Rondonópolis, Sinop"
             />
             <button
@@ -169,7 +290,7 @@ export function OperationForm() {
             id="start-date"
             type="date"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => { setStartDate(e.target.value); invalidateConfirmation(); }}
           />
         </div>
         <div className={styles.field}>
@@ -178,7 +299,7 @@ export function OperationForm() {
             id="target-area"
             type="number"
             value={secondCropTargetAreaHa}
-            onChange={(e) => setSecondCropTargetAreaHa(Number(e.target.value))}
+            onChange={(e) => { setSecondCropTargetAreaHa(Number(e.target.value)); invalidateConfirmation(); }}
           />
         </div>
       </div>
@@ -190,7 +311,7 @@ export function OperationForm() {
             id="total-area"
             type="number"
             value={totalAreaHa}
-            onChange={(e) => setTotalAreaHa(Number(e.target.value))}
+            onChange={(e) => { setTotalAreaHa(Number(e.target.value)); invalidateConfirmation(); }}
           />
         </div>
         <div className={styles.field}>
@@ -199,7 +320,7 @@ export function OperationForm() {
             id="planter"
             type="number"
             value={planterCapacityHaPerDay}
-            onChange={(e) => setPlanterCapacityHaPerDay(Number(e.target.value))}
+            onChange={(e) => { setPlanterCapacityHaPerDay(Number(e.target.value)); invalidateConfirmation(); }}
           />
         </div>
       </div>
@@ -259,7 +380,7 @@ export function OperationForm() {
             id="soy-margin"
             type="number"
             value={soybeanMarginPerHa}
-            onChange={(e) => setSoybeanMarginPerHa(Number(e.target.value))}
+            onChange={(e) => { setSoybeanMarginPerHa(Number(e.target.value)); invalidateConfirmation(); }}
           />
         </div>
         <div className={styles.field}>
@@ -268,7 +389,7 @@ export function OperationForm() {
             id="corn-margin"
             type="number"
             value={cornMarginPerHa}
-            onChange={(e) => setCornMarginPerHa(Number(e.target.value))}
+            onChange={(e) => { setCornMarginPerHa(Number(e.target.value)); invalidateConfirmation(); }}
           />
         </div>
         <div className={styles.field}>
@@ -278,17 +399,30 @@ export function OperationForm() {
             type="number"
             placeholder="—"
             value={operatingCostPerDay}
-            onChange={(e) => setOperatingCostPerDay(e.target.value === "" ? "" : Number(e.target.value))}
+            onChange={(e) => { setOperatingCostPerDay(e.target.value === "" ? "" : Number(e.target.value)); invalidateConfirmation(); }}
           />
         </div>
       </div>
 
       <div className={styles.ledgerFooter}>
-        <button className={styles.submit} type="button" onClick={handleSubmit} disabled={false} style={{ cursor: "pointer", opacity: 1 }}>
-          Confirmar e calcular →
+        <button
+          className={styles.submit}
+          type="button"
+          onClick={() => {
+            if (confirmed) {
+              handleSubmit();
+              return;
+            }
+            setConfirmed(true);
+            setError(null);
+          }}
+          disabled={false}
+          style={{ cursor: "pointer", opacity: 1 }}
+        >
+          {confirmed ? "Calcular plano confirmado →" : "Confirmar esta versão →"}
         </button>
         <span className={styles.submitNote}>
-          motor determinístico local ·{" "}
+          {confirmed ? `versão ${draftVersion} confirmada por botão · ` : `versão ${draftVersion} ainda não confirmada · `}
           {climateStatus === "live"
             ? `clima ao vivo de ${municipality.name}/${municipality.state}`
             : `fixture climática de ${municipality.name}/${municipality.state}`}
@@ -336,9 +470,15 @@ export function OperationForm() {
           </div>
 
           <div className={stripStyles.metrics} style={{ marginTop: 0 }}>
+            {plan.baseline && (
+              <div className={stripStyles.metric}>
+                <span className={stripStyles.metricValue}>{currency.format(plan.baseline.financialP20)}</span>
+                <span className={stripStyles.metricLabel}>ordem usual (baseline), P20</span>
+              </div>
+            )}
             <div className={stripStyles.metric}>
               <span className={stripStyles.metricValue}>{currency.format(plan.metrics.financialP20)}</span>
-              <span className={stripStyles.metricLabel}>resultado financeiro, P20</span>
+              <span className={stripStyles.metricLabel}>plano recomendado, P20</span>
             </div>
             <div className={stripStyles.metric}>
               <span className={stripStyles.metricValue}>{currency.format(plan.metrics.financialMedian)}</span>
@@ -364,13 +504,26 @@ export function OperationForm() {
 
           <div className={styles.tableWrap} style={{ borderTop: "1px solid var(--rule)", borderBottom: "none", paddingTop: "1.5rem" }}>
             <p className={styles.tableLabel}>Evento de campo</p>
-            <p className={styles.sectionSub} style={{ margin: "0 0 0.75rem" }}>
-              Simula: &ldquo;{FIELD_EVENT.notes[0]}&rdquo; a partir de {FIELD_EVENT.effectiveDate}. O motor
-              recalcula o plano sem esse talhão e mostra o diff auditável antes/depois.
-            </p>
-            <button type="button" className={styles.ctaSecondary} onClick={handleApplyEvent}>
-              Aplicar evento e replanejar
-            </button>
+            <textarea value={eventText} onChange={(event) => {
+              setEventText(event.target.value);
+              setEventDraft(null);
+              setEventConfirmed(false);
+            }} rows={3} className={styles.eventInput} aria-label="Relato do evento de campo" />
+            <div className={styles.eventActions}>
+              <button type="button" className={styles.ctaSecondary} onClick={handleParseEvent}>Estruturar evento</button>
+              {eventDraft && !eventConfirmed && (
+                <button type="button" className={styles.ctaPrimary} onClick={() => setEventConfirmed(true)}>Confirmar evento</button>
+              )}
+              {eventDraft && eventConfirmed && (
+                <button type="button" className={styles.ctaPrimary} onClick={handleApplyEvent}>Calcular replano confirmado</button>
+              )}
+            </div>
+            {eventDraft && (
+              <p className={styles.submitNote}>
+                {eventSource === "openai" ? "OpenAI" : "fallback preparado"} · {eventDraft.eventType} · {eventDraft.severity} ·
+                talhões {eventDraft.blockedFieldIds.join(", ") || "não identificados"} · data {eventDraft.effectiveDate}
+              </p>
+            )}
           </div>
 
           {replan && (
@@ -399,15 +552,25 @@ export function OperationForm() {
                 </table>
               </div>
 
-              <a
-                href={buildWhatsAppShareUrl(buildReplanWhatsAppMessage(municipality, replan))}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.ctaSecondary}
-                style={{ alignSelf: "flex-start", textDecoration: "none" }}
-              >
-                Compartilhar replanejamento no WhatsApp
-              </a>
+              <label className={styles.shareAuthorization}>
+                <input type="checkbox" checked={shareAuthorized} onChange={(event) => setShareAuthorized(event.target.checked)} />
+                Autorizo abrir um canal com esta mensagem determinística. Nada será enviado automaticamente.
+              </label>
+              {shareAuthorized && (() => {
+                const message = buildReplanWhatsAppMessage(municipality, replan);
+                const resultUrl = typeof window === "undefined" ? "" : window.location.href;
+                return (
+                  <div className={styles.eventActions}>
+                    <a href={buildWhatsAppShareUrl(message)} target="_blank" rel="noopener noreferrer" className={styles.ctaSecondary}>WhatsApp</a>
+                    <a href={buildTelegramShareUrl(message, resultUrl)} target="_blank" rel="noopener noreferrer" className={styles.ctaSecondary}>Telegram</a>
+                    <button type="button" className={styles.ctaSecondary} onClick={async () => {
+                      const result = await shareOrCopy(message, resultUrl);
+                      setShareNote(result === "shared" ? "Compartilhamento aberto." : "Mensagem copiada.");
+                    }}>Web Share / copiar</button>
+                  </div>
+                );
+              })()}
+              {shareNote && <p className={styles.submitNote}>{shareNote}</p>}
             </div>
           )}
         </div>

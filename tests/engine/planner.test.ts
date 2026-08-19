@@ -68,6 +68,33 @@ describe("buildPlan", () => {
     expect(Number.isFinite(plan.metrics.financialP20)).toBe(true);
   });
 
+  it("calcula a operação padrão exibida pela interface", () => {
+    const defaultUiInput: FarmOperationInput = {
+      municipality: sorrisoMt,
+      totalAreaHa: 850,
+      planterCapacityHaPerDay: 45,
+      startDate: "2025-09-15",
+      firstCrop: "soybean",
+      secondCrop: "corn",
+      fields: [
+        { id: "T-03", areaHa: 270, priority: "soy_only" },
+        { id: "T-01", areaHa: 320, priority: "second_crop" },
+        { id: "T-02", areaHa: 260, priority: "second_crop" },
+      ],
+      seedLots: [
+        { crop: "soybean", cycleDays: 98, availableAreaHa: 580 },
+        { crop: "soybean", cycleDays: 112, availableAreaHa: 270 },
+      ],
+      secondCropTargetAreaHa: 580,
+      finance: { soybeanMarginPerHa: 1850, cornMarginPerHa: 1200 },
+    };
+
+    const plan = buildPlan(defaultUiInput, sorrisoMt41Seasons);
+    expect(plan.historicalOutcomes).toHaveLength(41);
+    expect(plan.baseline).toBeDefined();
+    expect(plan.sequence).toHaveLength(3);
+  });
+
   it("rejeita dataset que não tenha exatamente 41 safras", () => {
     const incomplete = { ...tightSeasonDataset, records: tightSeasonDataset.records.slice(0, 40) };
     expect(() => buildPlan(input, incomplete)).toThrow(/exatamente 41 safras/);

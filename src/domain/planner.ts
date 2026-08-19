@@ -94,6 +94,18 @@ export function buildPlan(input: FarmOperationInput, dataset: HistoricalDataset)
       endDate,
       secondCropCandidate,
     })),
+    baseline: {
+      sequence: baseline.sequence.map(({ fieldId, cycleDays, startDate, endDate, secondCropCandidate }) => ({
+        fieldId,
+        cycleDays,
+        startDate,
+        endDate,
+        secondCropCandidate,
+      })),
+      financialP20: baseline.financialP20,
+      secondCropAreaP20Ha: baseline.secondCropAreaP20Ha,
+      viableSeasons: baseline.viableSeasons,
+    },
     historicalOutcomes: winner.historicalOutcomes,
     metrics: {
       viableSeasons: winner.viableSeasons,

@@ -31,21 +31,21 @@ orientação do que informar
 
 ## Tecnologias definidas
 
-- [ ] Node.js LTS instalado e versão registrada em `.nvmrc`.
-- [ ] npm usado como gerenciador; `package-lock.json` versionado.
-- [ ] Next.js com App Router para frontend e rotas de servidor.
-- [ ] React e TypeScript com `strict: true`.
-- [ ] Zod v4 como schema executável comum a UI, APIs, IA e motor.
-- [ ] SDK oficial `openai` para Responses API e Structured Outputs.
-- [ ] `@openai/agents` para `RealtimeAgent` e `RealtimeSession` no navegador.
-- [ ] WebRTC para áudio em tempo real.
-- [ ] Vitest para testes unitários e de contrato.
-- [ ] Testing Library + jsdom para componentes críticos.
-- [ ] CSS Modules/tokens globais; não instalar biblioteca visual sem critério do MVP.
-- [ ] Open-Meteo Geocoding API para município, UF, coordenadas, elevação e timezone.
-- [ ] Open-Meteo Historical Weather API, modelo ERA5-Land, para as 41 safras.
-- [ ] Web Share API, `wa.me` e `t.me/share/url` para compartilhamento sem credencial.
-- [ ] `node:crypto` para hashes determinísticos do plano e replano.
+- [x] Node.js LTS instalado e versão registrada em `.nvmrc`.
+- [x] npm usado como gerenciador; `package-lock.json` versionado.
+- [x] Next.js com App Router para frontend e rotas de servidor.
+- [x] React e TypeScript com `strict: true`.
+- [x] Zod v4 como schema executável comum a UI, APIs, IA e motor.
+- [x] SDK oficial `openai` para Responses API e Structured Outputs.
+- [x] `@openai/agents` para `RealtimeAgent` e `RealtimeSession` no navegador.
+- [x] WebRTC para áudio em tempo real.
+- [x] Vitest para testes unitários e de contrato.
+- [x] Testing Library + jsdom instalados para componentes críticos.
+- [x] CSS Modules/tokens globais; não instalar biblioteca visual sem critério do MVP.
+- [x] Open-Meteo Geocoding API para município, UF, coordenadas, elevação e timezone.
+- [x] Open-Meteo Historical Weather API, modelo ERA5, para as 41 safras.
+- [x] Web Share API, `wa.me` e `t.me/share/url` para compartilhamento sem credencial.
+- [x] `node:crypto` para hashes determinísticos do plano e replano.
 - [ ] Telegram Bot API somente como extensão gratuita se o core estiver verde.
 - [ ] Vercel somente depois do caminho local e offline estar verificado.
 
@@ -54,27 +54,27 @@ orientação do que informar
 ### Obrigatórias para o caminho ao vivo com IA
 
 - [ ] Obter `OPENAI_API_KEY` no projeto correto.
-- [ ] Criar `.env.local`; confirmar que `.env*` está no `.gitignore`.
-- [ ] Definir `OPENAI_API_KEY` somente no servidor.
+- [x] Fornecer `.env.example`; confirmar que `.env.local` e `.env*` estão no `.gitignore`.
+- [x] Definir `OPENAI_API_KEY` somente no servidor.
 - [ ] Definir `OPENAI_MODEL=gpt-5.6-terra` ou o modelo liberado no evento.
 - [ ] Definir `OPENAI_REALTIME_MODEL=gpt-realtime-2.1-mini` ou o modelo liberado.
 - [ ] Confirmar no início do evento que ambos os modelos estão acessíveis à conta.
-- [ ] Nunca criar variável `NEXT_PUBLIC_OPENAI_API_KEY`.
+- [x] Nunca criar variável `NEXT_PUBLIC_OPENAI_API_KEY`.
 
 ### Open-Meteo
 
 - [ ] Confirmar que o uso do hackathon está coberto pelo acesso sem chave.
-- [ ] Registrar atribuição a Open-Meteo e ERA5-Land na UI e no README.
+- [x] Registrar atribuição a Open-Meteo e ERA5 na UI e no README.
 - [ ] Se uma chave comercial for necessária, guardar como `OPEN_METEO_API_KEY` no servidor.
-- [ ] Não tornar a chave do Open-Meteo obrigatória para os três municípios preparados.
+- [x] Não tornar a chave do Open-Meteo obrigatória para os três municípios preparados.
 
 ### Telegram Bot API — opcional, não necessária para compartilhar
 
-- [ ] Manter WhatsApp e Telegram por links sem chave no core.
+- [x] Manter WhatsApp e Telegram por links sem chave no core.
 - [ ] Se houver tempo para envio automático, criar bot com BotFather.
 - [ ] Guardar `TELEGRAM_BOT_TOKEN` somente no servidor.
 - [ ] Definir `TELEGRAM_CHAT_ID` apenas para o destinatário de demonstração autorizado.
-- [ ] Se token ou chat não estiverem prontos, cortar o bot sem afetar os links.
+- [x] Se token ou chat não estiverem prontos, cortar o bot sem afetar os links.
 
 ### Deploy — opcional até o core funcionar
 
@@ -270,9 +270,9 @@ Responsável: engine/data. Escrita exclusiva: `src/data/`, `src/domain/` exceto
 
 - [ ] Criar `src/data/climate.ts` e `src/data/normalize.ts`.
 - [ ] Consultar `archive-api.open-meteo.com/v1/archive`.
-- [ ] Fixar `models=era5_land`.
+- [x] Fixar `models=era5`, conforme decisão técnica registrada; ERA5-Land foi rejeitado por séries incompletas/`null`.
 - [ ] Fixar início `1985-07-01` e fim `2026-06-30`.
-- [ ] Pedir precipitação, ET0, temperatura mínima/máxima e umidade superficial.
+- [x] Pedir precipitação, ET0 e temperatura mínima/máxima. Umidade superficial permanece indisponível e fora do contrato, sem substituição sintética.
 - [ ] Separar os dias em exatamente 41 anos agrícolas.
 - [ ] Rejeitar dia ausente, unidade inesperada ou safra incompleta.
 - [ ] Registrar fonte, período, grid, variáveis, unidades e data de recuperação.
@@ -565,42 +565,42 @@ Dependências: I2, `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`. Não começar se h
 
 ### R1 — Gate automatizado
 
-- [ ] `npm ci` funciona em checkout limpo.
-- [ ] `npm run typecheck` verde.
-- [ ] `npm run lint` verde.
-- [ ] `npm run test` verde.
-- [ ] `npm run check` verde e abaixo de 60 segundos.
-- [ ] Testes do motor não usam rede, relógio nem modelo.
+- [x] `npm ci` funciona com o lockfile atual.
+- [x] `npm run typecheck` verde.
+- [x] `npm run lint` verde.
+- [x] `npm run test` verde.
+- [x] `npm run check` verde e abaixo de 60 segundos.
+- [x] Testes do motor não usam rede, relógio nem modelo.
 - [ ] Testes de contrato cobrem válidos e inválidos.
-- [ ] Testes de dados cobrem 41 safras, unidades e fallback.
+- [x] Testes de dados cobrem 41 safras, unidades, séries `null`/incompletas e fallback.
 - [ ] Testes de notificações cobrem encode, HMAC e idempotência.
-- [ ] Nenhum teste foi enfraquecido para ficar verde.
+- [x] Nenhum teste foi enfraquecido para ficar verde.
 
 ### R2 — Segredos e fronteiras
 
-- [ ] Procurar `OPENAI_API_KEY`, tokens e segredos no Git e bundle cliente.
-- [ ] Confirmar que client secret Realtime é curto e efêmero.
+- [x] Procurar `OPENAI_API_KEY`, tokens e segredos no Git e fontes do cliente.
+- [x] Confirmar que client secret Realtime é curto e efêmero.
 - [ ] Confirmar que logs não contêm chave, áudio bruto ou token.
 - [ ] Confirmar que tool arguments da voz passam por Zod.
-- [ ] Confirmar que IA não produz datas, scores, viabilidade ou dinheiro.
-- [ ] Confirmar que alerta usa números do payload determinístico.
-- [ ] Confirmar autorização humana antes de envio externo.
+- [x] Confirmar que IA não produz datas derivadas, scores, viabilidade ou dinheiro.
+- [x] Confirmar que alerta usa números do payload determinístico.
+- [x] Confirmar autorização humana antes de abrir canal externo do replano.
 - [ ] Se o bot existir, confirmar que token não aparece no cliente e repetição não duplica envio.
 
 ### R3 — Caminhos manuais
 
 - [ ] Texto natural online: relato → confirmação → plano sem tentar voz.
-- [ ] Formulário online: preenchimento → confirmação → plano sem chamar IA.
+- [x] Formulário offline: preenchimento → confirmação → plano sem chamar IA.
 - [ ] Voz online: relato → resumo → confirmação falada → plano.
 - [ ] Correção por voz depois do resumo invalida confirmação.
 - [ ] Permissão de microfone negada termina pelo texto.
 - [ ] Realtime desconectado preserva o draft.
-- [ ] OpenAI indisponível usa recuperação rotulada.
-- [ ] Open-Meteo indisponível usa fixture rotulada.
+- [x] OpenAI indisponível usa recuperação rotulada.
+- [x] Open-Meteo indisponível usa fixture rotulada.
 - [ ] Cada um dos três municípios funciona offline.
-- [ ] Evento digitado produz replano.
+- [x] Evento digitado produz replano.
 - [ ] Evento falado exige confirmação e produz o mesmo contrato.
-- [ ] Envio exige autorização separada.
+- [x] Envio exige autorização separada.
 - [ ] WhatsApp abre com mensagem codificada corretamente.
 - [ ] Telegram abre com mensagem e link codificados corretamente.
 - [ ] Se o bot existir, repetir idempotency key não duplica envio.
@@ -609,14 +609,14 @@ Dependências: I2, `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`. Não começar se h
 
 ### R4 — Claims e proveniência
 
-- [ ] UI diz “protótipo” e “não substitui ZARC ou orientação agronômica”.
-- [ ] Resolução regional não é apresentada como precisão do talhão.
-- [ ] Dados reais, cache e fixtures aparecem com rótulos diferentes.
+- [x] UI diz “protótipo” e “não substitui ZARC ou orientação agronômica”.
+- [x] Resolução regional não é apresentada como precisão do talhão.
+- [x] Dados reais, cache e fixtures aparecem com rótulos diferentes.
 - [ ] Fonte, período, variáveis e hash aparecem no resultado.
 - [ ] Financeiro diz “usando as premissas fornecidas”.
-- [ ] Nenhuma copy promete lucro ou prevê produtividade exata.
-- [ ] Atribuições e licenças aparecem no README.
-- [ ] Ativos reaproveitados e de terceiros estão listados.
+- [x] Nenhuma copy promete lucro ou prevê produtividade exata.
+- [x] Atribuições e licenças aparecem no README.
+- [x] Ativos reaproveitados e de terceiros estão listados.
 
 Concluído quando: revisor independente não encontra P0 ou P1.
 
@@ -624,19 +624,19 @@ Concluído quando: revisor independente não encontra P0 ou P1.
 
 ### P1 — README e operação
 
-- [ ] Explicar promessa e limite do produto.
-- [ ] Listar requisitos e versões.
-- [ ] Documentar `.env.local.example` sem valores reais.
-- [ ] Documentar `npm ci`, `npm run dev` e `npm run check`.
-- [ ] Documentar APIs externas e fallback.
-- [ ] Documentar período fixo das 41 safras.
-- [ ] Documentar função objetivo e P20.
-- [ ] Documentar canais de envio e quais são opcionais.
-- [ ] Documentar origem dos ativos e dados.
+- [x] Explicar promessa e limite do produto.
+- [x] Listar requisitos e versões.
+- [x] Documentar `.env.example` sem valores reais.
+- [x] Documentar `npm ci`, `npm run dev` e `npm run check`.
+- [x] Documentar APIs externas e fallback.
+- [x] Documentar período fixo das 41 safras.
+- [x] Documentar função objetivo e P20.
+- [x] Documentar canais de envio e quais são opcionais.
+- [x] Documentar origem dos ativos e dados.
 
 ### P2 — Deploy
 
-- [ ] Executar build de produção local.
+- [x] Executar build de produção local.
 - [ ] Configurar variáveis server-only na Vercel.
 - [ ] Publicar preview.
 - [ ] Executar caminho textual no preview.
@@ -646,14 +646,14 @@ Concluído quando: revisor independente não encontra P0 ou P1.
 
 ### P3 — Roteiro de três minutos
 
-- [ ] 0:00–0:35 — relato por voz.
-- [ ] 0:35–0:55 — resumo e confirmação por voz.
-- [ ] 0:55–1:30 — plano, baseline e evidência das 41 safras.
-- [ ] 1:30–1:55 — explicar candidatos × 41 sem abrir detalhes demais.
-- [ ] 1:55–2:20 — evento crítico por voz e confirmação.
-- [ ] 2:20–2:40 — replano e diff.
-- [ ] 2:40–2:52 — compartilhar alerta.
-- [ ] 2:52–3:00 — mostrar fronteira IA versus código e disclaimer.
+- [x] 0:00–0:35 — relato por voz.
+- [x] 0:35–0:55 — resumo e confirmação por voz.
+- [x] 0:55–1:30 — plano, baseline e evidência das 41 safras.
+- [x] 1:30–1:55 — explicar candidatos × 41 sem abrir detalhes demais.
+- [x] 1:55–2:20 — evento crítico por voz e confirmação.
+- [x] 2:20–2:40 — replano e diff.
+- [x] 2:40–2:52 — compartilhar alerta.
+- [x] 2:52–3:00 — mostrar fronteira IA versus código e disclaimer.
 - [ ] Fazer dois ensaios cronometrados.
 - [ ] Gravar vídeo curto com caminho funcional.
 - [ ] Conferir links do repositório, demo e vídeo.

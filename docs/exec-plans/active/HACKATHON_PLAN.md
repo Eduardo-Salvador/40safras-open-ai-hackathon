@@ -2,8 +2,8 @@
 
 ## Current state
 
-- Active node: four-area execution setup
-- Product code: deterministic baseline present on `origin/main`; checklist evidence still needs reconciliation
+- Active node: local core freeze and external-demo handoff
+- Product code: voice/text/form boundary, ERA5 data path, deterministic plan/replan and credential-free sharing integrated on `Vitor`
 - Scope: operational planner defined in `docs/product-specs/MVP.md`
 - Remote repository: `https://github.com/Eduardo-Salvador/40safras-open-ai-hackathon`
 - Branch plan: `docs/exec-plans/branches/README.md`
@@ -111,14 +111,20 @@ have higher value after core freeze.
 
 ## Cuts made
 
-None yet.
+- Telegram Bot automatic sending is cut; credential-free Telegram Share remains in core.
+- Generated numerical explanation is cut; deterministic copy is used so no number can be invented.
+- Interactive historical drill-down is cut; the 41-season strip remains visible and auditable.
 
 ## Verification evidence
 
 | Gate | Command/manual path | Result | Time |
 |---|---|---|---|
 | D1 | `npm run check`; mocked incomplete/null-series and API fallback cases | 59 tests passed; TypeScript and lint passed | 2026-08-19 |
-| - | - | - | - |
+| Core | `npm ci && npm run check` | clean install; typecheck, lint, 19 files and 90 tests passed | 2026-08-19 |
+| Build | `npm run build` | production build completed; 12 pages/routes generated | 2026-08-19 |
+| Offline journey | production build at `localhost:3002`: confirm -> plan -> typed rain event -> confirm -> replan | 41-season result, baseline/recommended comparison and auditable diff rendered | 2026-08-19 |
+| Sharing | authorize checkbox in the offline journey | WhatsApp, Telegram and Web Share/copy controls shown only after explicit authorization | 2026-08-19 |
+| Default scenario regression | `npm test -- tests/engine/planner.test.ts` | 9 tests passed, including the exact fields and seed lots shown by the UI | 2026-08-19 |
 
 ## Open risks
 
@@ -131,6 +137,8 @@ None yet.
   text input and prepared drafts remain mandatory fallbacks.
 - Additional crop profiles need defensible parameters, not copied labels.
 - ERA5-Land lacks precipitation and ET0 in the tested Open-Meteo archive response; ERA5 is the approved core source. Soil moisture remains out of scope until a reviewed source/schema path exists.
+- Live Realtime voice still requires a human-provided OpenAI project key, model access, HTTPS/microphone permission and a manual rehearsal.
+- Public deploy, demo video and two timed rehearsals require human accounts/actions and are not proven by the local build.
 
 ## Demo-ready criteria
 
