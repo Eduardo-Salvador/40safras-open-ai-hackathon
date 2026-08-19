@@ -1,37 +1,29 @@
 import { centsToReais, seasonFinancialResultCents } from "./finance";
-import { hashObject, median, percentile } from "./metrics";
-import type { FarmOperationInput, FieldBlock, HistoricalDataset, PlanResult } from "./schemas";
+import { generateCandidates, type PlanCandidate } from "./candidates";
+import { hashObject, median, nearestRankPercentile } from "./metrics";
+import { compareCandidateRanking } from "./ranking";
+import type { FarmOperationInput, HistoricalDataset, PlanResult } from "./schemas";
 import { buildSequence, secondCropViableAreaHa, totalOperationDays, type SequenceItem } from "./simulator";
 
-/**
- * The "Quarenta Safras order": second-crop fields move to the front so the
- * planter frees them earliest, maximizing the odds each one beats that
- * season's rain window. `Array#sort` is stable, so relative order within
- * each priority group is preserved from the user's input.
- */
-function candidateFieldOrder(fields: FarmOperationInput["fields"]): FieldBlock[] {
-  return [...fields].sort((a, b) => {
-    if (a.priority === b.priority) return 0;
-    return a.priority === "second_crop" ? -1 : 1;
-  });
-}
-
 type OrderEvaluation = {
+  candidate: PlanCandidate;
   sequence: SequenceItem[];
   historicalOutcomes: PlanResult["historicalOutcomes"];
+  targetReachedSeasons: number;
   viableSeasons: number;
   secondCropAreaP20Ha: number;
   financialMedian: number;
   financialP20: number;
   financialWorstObserved: number;
+  operationDays: number;
 };
 
 function evaluateOrder(
   input: FarmOperationInput,
   dataset: HistoricalDataset,
-  fieldOrder: FieldBlock[],
+  candidate: PlanCandidate,
 ): OrderEvaluation {
-  const sequence = buildSequence(input, fieldOrder);
+  const sequence = buildSequence(input, candidate.fieldOrder, candidate.cycleDaysByField);
   const totalAreaHa = input.fields.reduce((sum, f) => sum + f.areaHa, 0);
   const operationDays = totalOperationDays(sequence);
 
@@ -49,19 +41,36 @@ function evaluateOrder(
   const financialValues = historicalOutcomes.map((o) => o.financialResult);
 
   return {
+    candidate,
     sequence,
     historicalOutcomes,
+    targetReachedSeasons: historicalOutcomes.filter(
+      (outcome) => outcome.secondCropViableAreaHa >= input.secondCropTargetAreaHa,
+    ).length,
     viableSeasons: historicalOutcomes.filter((o) => o.secondCropViableAreaHa > 0).length,
-    secondCropAreaP20Ha: Math.round(percentile(areaValues, 20)),
-    financialMedian: Math.round(median(financialValues)),
-    financialP20: Math.round(percentile(financialValues, 20)),
-    financialWorstObserved: Math.round(Math.min(...financialValues)),
+    secondCropAreaP20Ha: nearestRankPercentile(areaValues, 20),
+    financialMedian: median(financialValues),
+    financialP20: nearestRankPercentile(financialValues, 20),
+    financialWorstObserved: Math.min(...financialValues),
+    operationDays,
   };
 }
 
+function compareEvaluations(a: OrderEvaluation, b: OrderEvaluation): number {
+  return compareCandidateRanking(
+    { ...a, key: a.candidate.key },
+    { ...b, key: b.candidate.key },
+  );
+}
+
 export function buildPlan(input: FarmOperationInput, dataset: HistoricalDataset): PlanResult {
-  const baseline = evaluateOrder(input, dataset, input.fields);
-  const candidate = evaluateOrder(input, dataset, candidateFieldOrder(input.fields));
+  if (dataset.records.length !== 41) {
+    throw new Error("o planejador exige exatamente 41 safras históricas");
+  }
+
+  const evaluations = generateCandidates(input).map((candidate) => evaluateOrder(input, dataset, candidate));
+  const baseline = evaluations.find((evaluation) => evaluation.candidate.baseline)!;
+  const winner = [...evaluations].sort(compareEvaluations)[0];
 
   return {
     inputHash: hashObject(input),
@@ -73,26 +82,26 @@ export function buildPlan(input: FarmOperationInput, dataset: HistoricalDataset)
       real: dataset.real,
     },
     assumptions: [
-      "operational end-of-rains threshold is a declared prototype assumption, not agronomically validated",
-      "second-crop fields use the fastest available soybean cultivar; soy-only fields use the slowest",
-      "corn cycle uses the configured default for the crop profile, not a field-specific cultivar",
-      "financial result uses only the margins and cost you provided; it is not a profit guarantee",
+      `foram avaliados ${evaluations.length} candidatos válidos pelo ranking determinístico`,
+      "o limite operacional de fim das águas é uma premissa declarada do protótipo, sem validação agronômica",
+      "o ciclo do milho usa o padrão configurado no perfil da cultura, não uma cultivar específica por talhão",
+      "o resultado financeiro usa somente margens e custos informados; não representa garantia de lucro",
     ],
-    sequence: candidate.sequence.map(({ fieldId, cycleDays, startDate, endDate, secondCropCandidate }) => ({
+    sequence: winner.sequence.map(({ fieldId, cycleDays, startDate, endDate, secondCropCandidate }) => ({
       fieldId,
       cycleDays,
       startDate,
       endDate,
       secondCropCandidate,
     })),
-    historicalOutcomes: candidate.historicalOutcomes,
+    historicalOutcomes: winner.historicalOutcomes,
     metrics: {
-      viableSeasons: candidate.viableSeasons,
-      secondCropAreaP20Ha: candidate.secondCropAreaP20Ha,
-      financialMedian: candidate.financialMedian,
-      financialP20: candidate.financialP20,
-      financialWorstObserved: candidate.financialWorstObserved,
-      differenceFromBaselineP20: candidate.financialP20 - baseline.financialP20,
+      viableSeasons: winner.viableSeasons,
+      secondCropAreaP20Ha: winner.secondCropAreaP20Ha,
+      financialMedian: winner.financialMedian,
+      financialP20: winner.financialP20,
+      financialWorstObserved: winner.financialWorstObserved,
+      differenceFromBaselineP20: winner.financialP20 - baseline.financialP20,
     },
   };
 }

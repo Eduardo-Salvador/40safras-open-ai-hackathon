@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hashObject, median, percentile } from "@/domain/metrics";
+import { hashObject, median, nearestRankPercentile, percentile } from "@/domain/metrics";
 
 describe("percentile", () => {
   it("returns the single value for a one-element array", () => {
@@ -25,6 +25,19 @@ describe("percentile", () => {
 describe("median", () => {
   it("matches percentile(values, 50)", () => {
     expect(median([1, 2, 3, 4])).toBe(percentile([1, 2, 3, 4], 50));
+  });
+});
+
+describe("nearestRankPercentile", () => {
+  it("usa o nono menor valor para o P20 de 41 observações", () => {
+    const descending = Array.from({ length: 41 }, (_, index) => 41 - index);
+    expect(nearestRankPercentile(descending, 20)).toBe(9);
+  });
+
+  it("sempre retorna um valor observado, inclusive nos extremos", () => {
+    const values = [10, 20, 30, 40];
+    expect(nearestRankPercentile(values, 0)).toBe(10);
+    expect(nearestRankPercentile(values, 100)).toBe(40);
   });
 });
 
