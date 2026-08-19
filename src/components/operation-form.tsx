@@ -75,7 +75,8 @@ export function OperationForm() {
 
       setMunicipality(resolved);
       setDataset(climateBody.dataset);
-      setClimateStatus("live");
+      setClimateStatus(climateBody.fallback ? "fixture" : "live");
+      setClimateNote(climateBody.fallback ? "consulta ao vivo indisponível; fixture offline identificada" : null);
     } catch (err) {
       setMunicipality(sorrisoMt);
       setDataset(sorrisoMt41Seasons);
@@ -152,7 +153,8 @@ export function OperationForm() {
           <span className={styles.submitNote} style={{ marginTop: "0.35rem" }}>
             {climateStatus === "live" &&
               `${municipality.name}/${municipality.state} · ${dataset.source} · ${dataset.cached ? "cache" : "ao vivo"}`}
-            {climateStatus === "fixture" && `${municipality.name}/${municipality.state} · fixture offline (dados ilustrativos)`}
+            {climateStatus === "fixture" &&
+              `${municipality.name}/${municipality.state} · ${dataset.source} · fixture offline${climateNote ? ` (${climateNote})` : ""}`}
             {climateStatus === "loading" && "consultando Open-Meteo + IBGE…"}
             {climateStatus === "error" && (
               <span style={{ color: "var(--risk)" }}>

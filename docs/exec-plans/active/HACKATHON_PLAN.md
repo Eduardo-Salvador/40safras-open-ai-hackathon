@@ -106,6 +106,8 @@ have higher value after core freeze.
 | baseline | direct SDK on server, Agents SDK for browser voice | `openai` handles API calls; `@openai/agents` handles Realtime session mechanics |
 | execution | four areas follow team strengths | Murilo owns frontend; Eduarco owns backend/IA; Vitor owns external data; Pedro owns deterministic analytics. Write sets are disjoint and integration crosses only contracts/APIs |
 | execution | pure E1 may start from the frozen historical fixture while D1 runs | Pedro and Vitor can work in parallel; I1 remains blocked until Vitor proves the normalized 41-season dataset |
+| D1 | Open-Meteo archive uses ERA5, not ERA5-Land | On 2026-08-19, ERA5-Land returned `null` for required `precipitation_sum` and `et0_fao_evapotranspiration`; ERA5 returned complete precipitation, ET0, min/max temperature series for the fixed 1985-07-01 to 2026-06-30 period. Live datasets, cache keys, fixtures, and provenance label ERA5 explicitly. |
+| D1 | Surface soil moisture is unavailable in the ERA5 core path | The frozen dataset/engine does not consume a soil-moisture field. It is not silently substituted or synthesized; add it only through a reviewed schema and model/source decision. |
 
 ## Cuts made
 
@@ -115,6 +117,7 @@ None yet.
 
 | Gate | Command/manual path | Result | Time |
 |---|---|---|---|
+| D1 | `npm run check`; mocked incomplete/null-series and API fallback cases | 59 tests passed; TypeScript and lint passed | 2026-08-19 |
 | - | - | - | - |
 
 ## Open risks
@@ -127,6 +130,7 @@ None yet.
 - Realtime access, microphone permission, network jitter, and ambient noise can fail;
   text input and prepared drafts remain mandatory fallbacks.
 - Additional crop profiles need defensible parameters, not copied labels.
+- ERA5-Land lacks precipitation and ET0 in the tested Open-Meteo archive response; ERA5 is the approved core source. Soil moisture remains out of scope until a reviewed source/schema path exists.
 
 ## Demo-ready criteria
 
