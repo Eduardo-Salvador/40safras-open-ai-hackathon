@@ -26,13 +26,13 @@ export default function Home() {
             climáticas reais antes de qualquer número aparecer na tela.
           </p>
           <div className={styles.ctaRow}>
-            <button className={styles.ctaPrimary} type="button">
+            <a className={styles.ctaPrimary} href="#operation-input">
               <span className={styles.micDot} aria-hidden="true" />
-              Falar agora
-            </button>
-            <button className={styles.ctaSecondary} type="button">
-              Usar texto
-            </button>
+              Começar briefing
+            </a>
+            <a className={styles.ctaSecondary} href="#historical-proof">
+              Ver prova histórica
+            </a>
           </div>
           <p className={styles.heroNote}>
             Isto é decisão de apoio, não orientação ZARC, agronômica, financeira,
@@ -40,18 +40,17 @@ export default function Home() {
           </p>
         </header>
 
-        <section className={styles.section}>
+        <section className={styles.section} id="historical-proof">
           <SeasonStrip totalAreaHa={TOTAL_AREA_HA} />
         </section>
 
-        <section className={styles.section}>
+        <section className={styles.section} id="operation-input">
           <div className={styles.sectionHead}>
             <p className={styles.eyebrow}>Briefing da operação</p>
             <h2 className={styles.sectionTitle}>O que a IA confirma antes de calcular.</h2>
             <p className={styles.sectionSub}>
-              Hoje o formulário roda o motor determinístico local, com a fixture climática
-              de Sorriso/MT. A conversa por voz e a geocodificação ao vivo entram nas
-              próximas etapas do build.
+              Escolha voz, texto natural ou formulário. Os três modos chegam ao mesmo
+              rascunho editável e exigem confirmação antes do cálculo determinístico.
             </p>
           </div>
 

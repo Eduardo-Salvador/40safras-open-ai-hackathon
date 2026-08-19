@@ -19,6 +19,11 @@ import { sorrisoMt, sorrisoMt41Seasons } from "../../data/fixtures/municipalitie
 import { SeasonStrip } from "./season-strip";
 
 type ClimateStatus = "fixture" | "loading" | "live" | "error";
+type InputMode = "voice" | "text" | "form";
+type DraftStage = "editing" | "review" | "confirmed";
+
+const PREPARED_BRIEF =
+  "Sorriso, Mato Grosso. Começar em 15 de setembro. São 850 hectares em três talhões, plantadeira de 45 hectares por dia e meta de 580 hectares de milho segunda safra.";
 
 // Deliberately not pre-sorted by priority: this is the "usual order" a
 // producer would naturally list fields in, so the recommended reorder below
@@ -37,6 +42,10 @@ const SEED_LOTS: FarmOperationInput["seedLots"] = [
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 export function OperationForm() {
+  const [inputMode, setInputMode] = useState<InputMode>("form");
+  const [naturalBrief, setNaturalBrief] = useState(PREPARED_BRIEF);
+  const [draftStage, setDraftStage] = useState<DraftStage>("editing");
+  const [draftSource, setDraftSource] = useState<InputMode>("form");
   const [municipalityQuery, setMunicipalityQuery] = useState("Sorriso");
   const [municipality, setMunicipality] = useState<Municipality>(sorrisoMt);
   const [dataset, setDataset] = useState<HistoricalDataset>(sorrisoMt41Seasons);
@@ -56,7 +65,15 @@ export function OperationForm() {
   const [replan, setReplan] = useState<ReplanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  function invalidateConfirmation() {
+    setDraftStage("editing");
+    setLastInput(null);
+    setPlan(null);
+    setReplan(null);
+  }
+
   async function handleLoadClimate() {
+    invalidateConfirmation();
     setClimateStatus("loading");
     setClimateNote(null);
     try {
@@ -84,8 +101,8 @@ export function OperationForm() {
     }
   }
 
-  function handleSubmit() {
-    const input: FarmOperationInput = {
+  function operationInput(): FarmOperationInput {
+    return {
       municipality,
       totalAreaHa,
       planterCapacityHaPerDay,
@@ -101,6 +118,10 @@ export function OperationForm() {
         operatingCostPerDay: operatingCostPerDay === "" ? undefined : operatingCostPerDay,
       },
     };
+  }
+
+  function handleReviewDraft(source: InputMode) {
+    const input = operationInput();
 
     const parsed = FarmOperationInputSchema.safeParse(input);
     if (!parsed.success) {
@@ -110,9 +131,17 @@ export function OperationForm() {
     }
 
     setError(null);
-    setPlan(buildPlan(parsed.data, dataset));
     setLastInput(parsed.data);
+    setDraftSource(source);
+    setDraftStage("review");
+    setPlan(null);
     setReplan(null);
+  }
+
+  function handleConfirmAndCalculate() {
+    if (!lastInput) return;
+    setPlan(buildPlan(lastInput, dataset));
+    setDraftStage("confirmed");
   }
 
   const FIELD_EVENT: FieldEvent = {
@@ -129,6 +158,79 @@ export function OperationForm() {
 
   return (
     <div className={styles.ledger}>
+      <div className={styles.modeHeader}>
+        <div>
+          <p className={styles.tableLabel}>Como você quer informar a operação?</p>
+          <p className={styles.modeHint}>Os três caminhos geram o mesmo rascunho para revisão.</p>
+        </div>
+        <span className={styles.stepBadge}>1 · entrada</span>
+      </div>
+
+      <div className={styles.modeTabs} role="tablist" aria-label="Modo de entrada da operação">
+        {([
+          ["voice", "Voz", "push-to-talk"],
+          ["text", "Texto", "relato natural"],
+          ["form", "Formulário", "campos diretos"],
+        ] as const).map(([mode, label, detail]) => (
+          <button
+            key={mode}
+            type="button"
+            role="tab"
+            aria-selected={inputMode === mode}
+            className={styles.modeTab}
+            onClick={() => setInputMode(mode)}
+          >
+            <strong>{label}</strong>
+            <span>{detail}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className={styles.modePanel} role="tabpanel" aria-live="polite">
+        {inputMode === "voice" && (
+          <div className={styles.voicePanel}>
+            <span className={styles.voiceIcon} aria-hidden="true">●</span>
+            <div>
+              <h3>Voz preparada para a integração A1</h3>
+              <p>
+                Este frontend não abre o microfone ainda. O botão abaixo usa um relato
+                preparado e deixa explícito o rascunho que será confirmado.
+              </p>
+            </div>
+            <button type="button" className={styles.ctaPrimary} onClick={() => handleReviewDraft("voice")}>
+              Usar relato de voz preparado
+            </button>
+          </div>
+        )}
+
+        {inputMode === "text" && (
+          <div className={styles.textPanel}>
+            <label htmlFor="natural-brief">Descreva a operação em português</label>
+            <textarea
+              id="natural-brief"
+              value={naturalBrief}
+              onChange={(event) => {
+                setNaturalBrief(event.target.value);
+                invalidateConfirmation();
+              }}
+              rows={4}
+            />
+            <div className={styles.modeActionRow}>
+              <span>Interpretação preparada neste estágio; a API de IA entra em A1.</span>
+              <button type="button" className={styles.ctaPrimary} onClick={() => handleReviewDraft("text")}>
+                Gerar rascunho preparado
+              </button>
+            </div>
+          </div>
+        )}
+
+        {inputMode === "form" && (
+          <p className={styles.formModeNote}>
+            Edite os campos estruturados abaixo. Qualquer alteração invalida uma confirmação anterior.
+          </p>
+        )}
+      </div>
+
       <div className={styles.ledgerRow}>
         <div className={styles.field}>
           <label htmlFor="municipality">Município</label>
@@ -136,7 +238,10 @@ export function OperationForm() {
             <input
               id="municipality"
               value={municipalityQuery}
-              onChange={(e) => setMunicipalityQuery(e.target.value)}
+              onChange={(e) => {
+                setMunicipalityQuery(e.target.value);
+                invalidateConfirmation();
+              }}
               placeholder="ex: Sorriso, Rondonópolis, Sinop"
             />
             <button
@@ -167,7 +272,10 @@ export function OperationForm() {
             id="start-date"
             type="date"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => {
+              setStartDate(e.target.value);
+              invalidateConfirmation();
+            }}
           />
         </div>
         <div className={styles.field}>
@@ -176,7 +284,10 @@ export function OperationForm() {
             id="target-area"
             type="number"
             value={secondCropTargetAreaHa}
-            onChange={(e) => setSecondCropTargetAreaHa(Number(e.target.value))}
+            onChange={(e) => {
+              setSecondCropTargetAreaHa(Number(e.target.value));
+              invalidateConfirmation();
+            }}
           />
         </div>
       </div>
@@ -188,7 +299,10 @@ export function OperationForm() {
             id="total-area"
             type="number"
             value={totalAreaHa}
-            onChange={(e) => setTotalAreaHa(Number(e.target.value))}
+            onChange={(e) => {
+              setTotalAreaHa(Number(e.target.value));
+              invalidateConfirmation();
+            }}
           />
         </div>
         <div className={styles.field}>
@@ -197,7 +311,10 @@ export function OperationForm() {
             id="planter"
             type="number"
             value={planterCapacityHaPerDay}
-            onChange={(e) => setPlanterCapacityHaPerDay(Number(e.target.value))}
+            onChange={(e) => {
+              setPlanterCapacityHaPerDay(Number(e.target.value));
+              invalidateConfirmation();
+            }}
           />
         </div>
       </div>
@@ -257,7 +374,10 @@ export function OperationForm() {
             id="soy-margin"
             type="number"
             value={soybeanMarginPerHa}
-            onChange={(e) => setSoybeanMarginPerHa(Number(e.target.value))}
+            onChange={(e) => {
+              setSoybeanMarginPerHa(Number(e.target.value));
+              invalidateConfirmation();
+            }}
           />
         </div>
         <div className={styles.field}>
@@ -266,7 +386,10 @@ export function OperationForm() {
             id="corn-margin"
             type="number"
             value={cornMarginPerHa}
-            onChange={(e) => setCornMarginPerHa(Number(e.target.value))}
+            onChange={(e) => {
+              setCornMarginPerHa(Number(e.target.value));
+              invalidateConfirmation();
+            }}
           />
         </div>
         <div className={styles.field}>
@@ -276,14 +399,17 @@ export function OperationForm() {
             type="number"
             placeholder="—"
             value={operatingCostPerDay}
-            onChange={(e) => setOperatingCostPerDay(e.target.value === "" ? "" : Number(e.target.value))}
+            onChange={(e) => {
+              setOperatingCostPerDay(e.target.value === "" ? "" : Number(e.target.value));
+              invalidateConfirmation();
+            }}
           />
         </div>
       </div>
 
       <div className={styles.ledgerFooter}>
-        <button className={styles.submit} type="button" onClick={handleSubmit} disabled={false} style={{ cursor: "pointer", opacity: 1 }}>
-          Confirmar e calcular →
+        <button className={styles.submit} type="button" onClick={() => handleReviewDraft("form")}>
+          Revisar dados →
         </button>
         <span className={styles.submitNote}>
           motor determinístico local ·{" "}
@@ -292,6 +418,44 @@ export function OperationForm() {
             : `fixture climática de ${municipality.name}/${municipality.state}`}
         </span>
       </div>
+
+      {lastInput && draftStage !== "editing" && (
+        <section className={styles.confirmationPanel} aria-labelledby="confirmation-title">
+          <div className={styles.confirmationHead}>
+            <div>
+              <p className={styles.tableLabel}>Rascunho estruturado · origem: {draftSource}</p>
+              <h3 id="confirmation-title">
+                {draftStage === "confirmed" ? "Dados confirmados" : "Confira antes de calcular"}
+              </h3>
+            </div>
+            <span className={styles.stepBadge}>2 · confirmação</span>
+          </div>
+
+          <dl className={styles.draftSummary}>
+            <div><dt>Município</dt><dd>{lastInput.municipality.name}/{lastInput.municipality.state}</dd></div>
+            <div><dt>Início</dt><dd>{lastInput.startDate}</dd></div>
+            <div><dt>Área total</dt><dd>{lastInput.totalAreaHa} ha</dd></div>
+            <div><dt>Plantadeira</dt><dd>{lastInput.planterCapacityHaPerDay} ha/dia</dd></div>
+            <div><dt>Meta safrinha</dt><dd>{lastInput.secondCropTargetAreaHa} ha</dd></div>
+            <div><dt>Talhões</dt><dd>{lastInput.fields.length}</dd></div>
+          </dl>
+
+          {draftStage === "review" ? (
+            <div className={styles.confirmationActions}>
+              <button type="button" className={styles.ctaSecondary} onClick={invalidateConfirmation}>
+                Voltar e editar
+              </button>
+              <button type="button" className={styles.submit} onClick={handleConfirmAndCalculate}>
+                Confirmar e calcular →
+              </button>
+            </div>
+          ) : (
+            <p className={styles.confirmedNote} role="status">
+              Confirmado. O resultado abaixo usa exatamente este payload e o dataset indicado.
+            </p>
+          )}
+        </section>
+      )}
 
       {error && (
         <p className={styles.submitNote} style={{ color: "var(--risk)", marginTop: "1rem" }}>

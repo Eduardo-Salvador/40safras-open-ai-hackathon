@@ -107,6 +107,7 @@
   border: none;
   cursor: pointer;
   transition: transform 0.15s ease, background 0.15s ease;
+  text-decoration: none;
 }
 
 .ctaPrimary:hover {
@@ -141,6 +142,7 @@
   border: 1px solid var(--rule-strong);
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease;
+  text-decoration: none;
 }
 
 .ctaSecondary:hover {
@@ -197,6 +199,185 @@
   border: 1px solid var(--rule);
   border-radius: 4px;
   padding: 2rem;
+}
+
+.modeHeader,
+.confirmationHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.modeHint {
+  color: var(--ink-dim);
+  font-size: 0.9rem;
+  margin: -0.25rem 0 0;
+}
+
+.stepBadge {
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  color: var(--ink-faint);
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  padding: 0.3rem 0.65rem;
+  text-transform: uppercase;
+}
+
+.modeTabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.65rem;
+  margin: 1.25rem 0 0;
+}
+
+.modeTab {
+  background: var(--bg-raised-2);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  color: var(--ink-dim);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.8rem 0.9rem;
+  text-align: left;
+}
+
+.modeTab strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.modeTab span {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.modeTab[aria-selected="true"] {
+  background: color-mix(in srgb, var(--soy) 10%, var(--bg-raised-2));
+  border-color: var(--soy);
+}
+
+.modePanel {
+  border-bottom: 1px solid var(--rule);
+  padding: 1rem 0 1.25rem;
+}
+
+.voicePanel {
+  align-items: center;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: auto 1fr auto;
+}
+
+.voicePanel h3,
+.confirmationPanel h3 {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  margin: 0 0 0.3rem;
+}
+
+.voicePanel p,
+.formModeNote {
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.voiceIcon {
+  align-items: center;
+  border: 1px solid var(--soy-dim);
+  border-radius: 999px;
+  color: var(--soy);
+  display: inline-flex;
+  height: 2.5rem;
+  justify-content: center;
+  width: 2.5rem;
+}
+
+.textPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.textPanel label {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.textPanel textarea {
+  background: var(--bg-raised-2);
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.5;
+  padding: 0.8rem;
+  resize: vertical;
+}
+
+.modeActionRow,
+.confirmationActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.modeActionRow span {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+
+.confirmationPanel {
+  background: color-mix(in srgb, var(--corn) 5%, var(--bg-raised-2));
+  border: 1px solid var(--corn-dim);
+  border-radius: 3px;
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+}
+
+.draftSummary {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 1rem 0 1.25rem;
+}
+
+.draftSummary div {
+  border-top: 1px solid var(--rule);
+  padding-top: 0.65rem;
+}
+
+.draftSummary dt {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+}
+
+.draftSummary dd {
+  color: var(--ink);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.confirmedNote {
+  color: var(--soy);
+  font-size: 0.85rem;
+  margin: 0;
 }
 
 .ledgerRow {
@@ -308,8 +489,7 @@
   padding: 0.85rem 1.4rem;
   border-radius: 3px;
   border: none;
-  cursor: not-allowed;
-  opacity: 0.55;
+  cursor: pointer;
 }
 
 .submitNote {
@@ -338,4 +518,43 @@
   font-size: 0.72rem;
   color: var(--ink-faint);
   letter-spacing: 0.02em;
+}
+
+@media (max-width: 700px) {
+  .container {
+    padding: 0 1rem;
+  }
+
+  .hero {
+    padding: 2.25rem 0 3rem;
+  }
+
+  .ledger {
+    padding: 1.1rem;
+  }
+
+  .modeTabs,
+  .draftSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .voicePanel {
+    align-items: flex-start;
+    grid-template-columns: auto 1fr;
+  }
+
+  .voicePanel .ctaPrimary {
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+
+  .modeActionRow,
+  .confirmationActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tableWrap {
+    overflow-x: auto;
+  }
 }
