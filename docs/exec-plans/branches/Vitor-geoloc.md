@@ -1,7 +1,8 @@
 # VITOR-GEOLOC-01 — experimento de cadastro territorial
 
-Status: implementado e verificado na branch `Vitor` em 19/08/2026.
-Push da branch autorizado pelo product owner; merge automático na `main` continua fora do escopo.
+Status: implementado e verificado por Vitor e isolado na branch `cadastro/terrorio`
+em 19/08/2026. A branch deriva do trabalho validado em `Vitor`; merge automático na
+`main` continua fora do escopo.
 
 ## Objetivo e aceite
 
