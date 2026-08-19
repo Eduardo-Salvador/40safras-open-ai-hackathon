@@ -2,10 +2,11 @@
 
 ## Current state
 
-- Active node: none
-- Product code: not started
+- Active node: four-area execution setup
+- Product code: deterministic baseline present on `origin/main`; checklist evidence still needs reconciliation
 - Scope: operational planner defined in `docs/product-specs/MVP.md`
 - Remote repository: `https://github.com/Eduardo-Salvador/40safras-open-ai-hackathon`
+- Branch plan: `docs/exec-plans/branches/README.md`
 
 ## Core outcome
 
@@ -77,7 +78,10 @@ have higher value after core freeze.
 
 | Task | Agent/person | Paths | Started | Released |
 |---|---|---|---|---|
-| - | - | - | - | - |
+| K0/K1/S1/S2/A1/O1 + backend integration | `Eduarco` branch | contracts, APIs, OpenAI, manifests/configs and execution docs | after `main` sync | - |
+| F1/F2 + visual integration | `Murilo` branch | UI, global styles, components, sharing and assets | after S1/S2 freeze | - |
+| D1 | `Vitor` branch | geocoding, climate normalization, cache and municipality fixtures | after S1/S2 freeze | - |
+| E1/E2 | `Pedro` branch | deterministic planner, simulator, metrics, finance and diff | after S1/S2 freeze | - |
 
 ## Decision log
 
@@ -100,6 +104,8 @@ have higher value after core freeze.
 | baseline | walkthrough is the canonical plain-language explanation | Product/build questions reuse one unambiguous end-to-end narrative |
 | baseline | task decomposer proposes but never dispatches | Complex work can be split safely without recursive agent ownership |
 | baseline | direct SDK on server, Agents SDK for browser voice | `openai` handles API calls; `@openai/agents` handles Realtime session mechanics |
+| execution | four areas follow team strengths | Murilo owns frontend; Eduarco owns backend/IA; Vitor owns external data; Pedro owns deterministic analytics. Write sets are disjoint and integration crosses only contracts/APIs |
+| execution | pure E1 may start from the frozen historical fixture while D1 runs | Pedro and Vitor can work in parallel; I1 remains blocked until Vitor proves the normalized 41-season dataset |
 
 ## Cuts made
 

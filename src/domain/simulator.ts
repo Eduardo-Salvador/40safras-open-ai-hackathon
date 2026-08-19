@@ -23,7 +23,11 @@ function assignSoybeanCycleDays(field: FieldBlock, input: FarmOperationInput): n
   return field.priority === "second_crop" ? Math.min(...cycles) : Math.max(...cycles);
 }
 
-export function buildSequence(input: FarmOperationInput, fieldOrder: FieldBlock[]): SequenceItem[] {
+export function buildSequence(
+  input: FarmOperationInput,
+  fieldOrder: FieldBlock[],
+  cycleDaysByField?: Readonly<Record<string, number>>,
+): SequenceItem[] {
   const corn = getCropProfile("corn");
   let cumulativeDays = 0;
 
@@ -32,7 +36,7 @@ export function buildSequence(input: FarmOperationInput, fieldOrder: FieldBlock[
     const startDate = addDays(input.startDate, cumulativeDays);
     cumulativeDays += plantDays;
 
-    const cycleDays = assignSoybeanCycleDays(field, input);
+    const cycleDays = cycleDaysByField?.[field.id] ?? assignSoybeanCycleDays(field, input);
     const endDate = addDays(startDate, cycleDays);
     const secondCropCandidate = field.priority === "second_crop";
 
