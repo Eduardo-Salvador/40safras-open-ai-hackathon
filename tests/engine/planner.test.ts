@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPlan } from "@/domain/planner";
-import { HistoricalDatasetSchema, type FarmOperationInput, type HistoricalDataset } from "@/domain/schemas";
+import { HistoricalDatasetSchema, PlanResultSchema, type FarmOperationInput, type HistoricalDataset } from "@/domain/schemas";
 import { sorrisoMt, sorrisoMt41Seasons } from "../../data/fixtures/municipalities/sorriso-mt";
 
 const input: FarmOperationInput = {
@@ -15,8 +15,8 @@ const input: FarmOperationInput = {
     { id: "B", areaHa: 100, priority: "second_crop" },
   ],
   seedLots: [
-    { crop: "soybean", cycleDays: 90, availableAreaHa: 200 },
-    { crop: "soybean", cycleDays: 120, availableAreaHa: 200 },
+    { id: "L90", crop: "soybean", cycleDays: 90, availableAreaHa: 200 },
+    { id: "L120", crop: "soybean", cycleDays: 120, availableAreaHa: 200 },
   ],
   secondCropTargetAreaHa: 100,
   finance: { soybeanMarginPerHa: 1000, cornMarginPerHa: 800 },
@@ -68,6 +68,32 @@ describe("buildPlan", () => {
     expect(Number.isFinite(plan.metrics.financialP20)).toBe(true);
   });
 
+  it("returns complete baseline evidence and preserves field and seed-lot IDs", () => {
+    const plan = buildPlan(input, tightSeasonDataset);
+
+    expect(() => PlanResultSchema.parse(plan)).not.toThrow();
+    expect(plan.baseline.sequence.map((item) => item.fieldId)).toEqual(input.fields.map((field) => field.id));
+    expect(plan.baseline.historicalOutcomes).toHaveLength(41);
+    expect(plan.baseline.metrics.financialP20 + plan.metrics.differenceFromBaselineP20).toBe(plan.metrics.financialP20);
+    expect(plan.candidatesEvaluated).toBeGreaterThan(0);
+    expect(plan.candidatesEvaluated).toBeLessThanOrEqual(100);
+    expect(plan.rankingCriteria).toEqual([
+      "secondCropAreaP20Ha:desc",
+      "targetReachedSeasons:desc",
+      "viableSeasons:desc",
+      "financialP20:desc",
+      "operationDays:asc",
+      "candidateKey:asc",
+    ]);
+
+    const knownFieldIds = new Set(input.fields.map((field) => field.id));
+    const knownLotIds = new Set(input.seedLots.map((lot) => lot.id));
+    for (const item of [...plan.baseline.sequence, ...plan.sequence]) {
+      expect(knownFieldIds.has(item.fieldId)).toBe(true);
+      expect(knownLotIds.has(item.seedLotId)).toBe(true);
+    }
+  });
+
   it("rejeita dataset que não tenha exatamente 41 safras", () => {
     const incomplete = { ...tightSeasonDataset, records: tightSeasonDataset.records.slice(0, 40) };
     expect(() => buildPlan(input, incomplete)).toThrow(/exatamente 41 safras/);
@@ -80,7 +106,7 @@ describe("buildPlan", () => {
         { id: "B", areaHa: 100, priority: "second_crop" },
         { id: "A", areaHa: 100, priority: "second_crop" },
       ],
-      seedLots: [{ crop: "soybean", cycleDays: 90, availableAreaHa: 200 }],
+      seedLots: [{ id: "L90", crop: "soybean", cycleDays: 90, availableAreaHa: 200 }],
     };
     const generousDataset = {
       ...tightSeasonDataset,
@@ -105,6 +131,7 @@ describe("buildPlan", () => {
       priority: "second_crop" as const,
     }));
     const seedLots = [90, 100, 110, 120].map((cycleDays) => ({
+      id: `L${cycleDays}`,
       crop: "soybean" as const,
       cycleDays,
       availableAreaHa: 100,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildReplan } from "@/domain/replan";
+import { buildPlan } from "@/domain/planner";
 import type { FarmOperationInput, FieldEvent, HistoricalDataset } from "@/domain/schemas";
 import { sorrisoMt, sorrisoMt41Seasons } from "../../data/fixtures/municipalities/sorriso-mt";
 
@@ -15,8 +16,8 @@ const input: FarmOperationInput = {
     { id: "B", areaHa: 100, priority: "second_crop" },
   ],
   seedLots: [
-    { crop: "soybean", cycleDays: 90, availableAreaHa: 200 },
-    { crop: "soybean", cycleDays: 120, availableAreaHa: 200 },
+    { id: "L90", crop: "soybean", cycleDays: 90, availableAreaHa: 200 },
+    { id: "L120", crop: "soybean", cycleDays: 120, availableAreaHa: 200 },
   ],
   secondCropTargetAreaHa: 100,
   finance: { soybeanMarginPerHa: 1000, cornMarginPerHa: 800 },
@@ -31,8 +32,10 @@ const tightSeasonDataset: HistoricalDataset = {
 
 const floodEvent: FieldEvent = {
   effectiveDate: "2025-10-01",
+  severity: "critical",
+  type: "field_blocked",
   blockedFieldIds: ["B"],
-  seedDeltaAreaHaByCycle: {},
+  seedDeltaAreaHaByLot: {},
   notes: ["talhão B alagado"],
 };
 
@@ -53,8 +56,22 @@ describe("buildReplan", () => {
 
   it("keeps the original plan visible alongside the recalculated one", () => {
     const replan = buildReplan(input, tightSeasonDataset, floodEvent);
+    expect(replan.before).toEqual(buildPlan(input, tightSeasonDataset));
     expect(replan.before).not.toEqual(replan.after);
     expect(replan.event).toEqual(floodEvent);
+  });
+
+  it("delays a temporarily blocked field and emits a deterministic release reason", () => {
+    const event: FieldEvent = { ...floodEvent, blockedUntil: "2025-10-10", severity: "operational" };
+    const replan = buildReplan(input, tightSeasonDataset, event);
+    const field = replan.after.sequence.find((item) => item.fieldId === "B");
+
+    expect(field).toBeDefined();
+    expect(field!.startDate >= "2025-10-11").toBe(true);
+    expect(replan.changes).toContainEqual(expect.objectContaining({
+      code: "FIELD_RELEASE_DELAYED",
+      entity: "talhão B · início do plantio",
+    }));
   });
 
   it("explains at least one change with a concrete reason", () => {

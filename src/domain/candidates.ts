@@ -7,6 +7,7 @@ export const MAX_CANDIDATES = 100;
 export type PlanCandidate = {
   key: string;
   fieldOrder: FieldBlock[];
+  seedLotIdByField: Readonly<Record<string, string>>;
   cycleDaysByField: Readonly<Record<string, number>>;
   baseline: boolean;
 };
@@ -23,8 +24,8 @@ function permutations<T>(items: T[]): T[][] {
   return result;
 }
 
-function candidateKey(fieldOrder: FieldBlock[], cycleDaysByField: Readonly<Record<string, number>>): string {
-  return fieldOrder.map((field) => `${field.id}@${cycleDaysByField[field.id]}`).join(">");
+function candidateKey(fieldOrder: FieldBlock[], seedLotIdByField: Readonly<Record<string, string>>): string {
+  return JSON.stringify(fieldOrder.map((field) => [field.id, seedLotIdByField[field.id]]));
 }
 
 /**
@@ -39,6 +40,10 @@ export function generateCandidates(input: FarmOperationInput): PlanCandidate[] {
   const fieldIds = new Set(input.fields.map((field) => field.id));
   if (fieldIds.size !== input.fields.length) {
     throw new Error("os IDs dos talhões precisam ser únicos");
+  }
+  const seedLotIds = new Set(input.seedLots.map((lot) => lot.id));
+  if (seedLotIds.size !== input.seedLots.length) {
+    throw new Error("os IDs dos lotes de semente precisam ser únicos");
   }
 
   const soybean = getCropProfile("soybean");
@@ -55,17 +60,21 @@ export function generateCandidates(input: FarmOperationInput): PlanCandidate[] {
   const seen = new Set<string>();
 
   for (const fieldOrder of permutations(input.fields)) {
+    if (candidates.length >= MAX_CANDIDATES) break;
     const remainingByLot = input.seedLots.map((lot) => lot.availableAreaHa);
+    const seedLotIdByField: Record<string, string> = {};
     const cycleDaysByField: Record<string, number> = {};
 
     function assignField(fieldIndex: number) {
+      if (candidates.length >= MAX_CANDIDATES) return;
       if (fieldIndex === fieldOrder.length) {
-        const key = candidateKey(fieldOrder, cycleDaysByField);
+        const key = candidateKey(fieldOrder, seedLotIdByField);
         if (seen.has(key)) return;
         seen.add(key);
         candidates.push({
           key,
           fieldOrder: [...fieldOrder],
+          seedLotIdByField: { ...seedLotIdByField },
           cycleDaysByField: { ...cycleDaysByField },
           baseline: candidates.length === 0,
         });
@@ -74,12 +83,15 @@ export function generateCandidates(input: FarmOperationInput): PlanCandidate[] {
 
       const field = fieldOrder[fieldIndex];
       for (let lotIndex = 0; lotIndex < input.seedLots.length; lotIndex++) {
+        if (candidates.length >= MAX_CANDIDATES) break;
         if (remainingByLot[lotIndex] < field.areaHa) continue;
 
         remainingByLot[lotIndex] -= field.areaHa;
+        seedLotIdByField[field.id] = input.seedLots[lotIndex].id;
         cycleDaysByField[field.id] = input.seedLots[lotIndex].cycleDays;
         assignField(fieldIndex + 1);
         remainingByLot[lotIndex] += field.areaHa;
+        delete seedLotIdByField[field.id];
         delete cycleDaysByField[field.id];
       }
     }

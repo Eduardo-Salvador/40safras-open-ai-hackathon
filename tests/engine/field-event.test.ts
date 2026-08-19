@@ -21,8 +21,8 @@ const input: FarmOperationInput = {
     { id: "B", areaHa: 100, priority: "second_crop" },
   ],
   seedLots: [
-    { crop: "soybean", cycleDays: 90, availableAreaHa: 200 },
-    { crop: "soybean", cycleDays: 120, availableAreaHa: 200 },
+    { id: "L90", crop: "soybean", cycleDays: 90, availableAreaHa: 200 },
+    { id: "L120", crop: "soybean", cycleDays: 120, availableAreaHa: 200 },
   ],
   secondCropTargetAreaHa: 100,
   finance: { soybeanMarginPerHa: 1000, cornMarginPerHa: 800 },
@@ -32,8 +32,10 @@ describe("applyFieldEvent", () => {
   it("drops blocked fields and reduces the declared total area", () => {
     const event: FieldEvent = {
       effectiveDate: "2025-10-01",
+      severity: "critical",
+      type: "field_blocked",
       blockedFieldIds: ["B"],
-      seedDeltaAreaHaByCycle: {},
+      seedDeltaAreaHaByLot: {},
       notes: ["alagamento"],
     };
 
@@ -42,33 +44,58 @@ describe("applyFieldEvent", () => {
     expect(updated.totalAreaHa).toBe(100);
   });
 
-  it("adjusts seed lot availability by cycle-days key and drops exhausted lots", () => {
+  it("adjusts seed availability by stable lot ID and drops exhausted lots", () => {
     const event: FieldEvent = {
       effectiveDate: "2025-10-01",
+      severity: "operational",
+      type: "seed_loss",
       blockedFieldIds: [],
-      seedDeltaAreaHaByCycle: { "90": -200, "120": 50 },
+      seedDeltaAreaHaByLot: { L90: -200, L120: 50 },
       notes: [],
     };
 
     const updated = applyFieldEvent(input, event);
-    expect(updated.seedLots).toEqual([{ crop: "soybean", cycleDays: 120, availableAreaHa: 250 }]);
+    expect(updated.seedLots).toEqual([{ id: "L120", crop: "soybean", cycleDays: 120, availableAreaHa: 250 }]);
   });
 
-  it("never leaves zero fields or zero seed lots, even if the event would exhaust them", () => {
+  it("rejects an event that leaves no operational plan", () => {
     const blockEverything: FieldEvent = {
       effectiveDate: "2025-10-01",
+      severity: "critical",
+      type: "field_blocked",
       blockedFieldIds: ["A", "B"],
-      seedDeltaAreaHaByCycle: { "90": -200, "120": -200 },
+      seedDeltaAreaHaByLot: {},
       notes: [],
     };
 
-    const updated = applyFieldEvent(input, blockEverything);
-    expect(updated.fields.length).toBeGreaterThan(0);
-    expect(updated.seedLots.length).toBeGreaterThan(0);
+    expect(() => applyFieldEvent(input, blockEverything)).toThrow(/todos os talhões/);
+  });
+
+  it("preserves a temporarily blocked field and records its release date", () => {
+    const temporaryBlock: FieldEvent = {
+      effectiveDate: "2025-10-01",
+      severity: "operational",
+      type: "excess_rain",
+      blockedFieldIds: ["B"],
+      blockedUntil: "2025-10-10",
+      seedDeltaAreaHaByLot: {},
+      notes: [],
+    };
+
+    const updated = applyFieldEvent(input, temporaryBlock);
+    expect(updated.fields.find((field) => field.id === "B")?.availableFrom).toBe("2025-10-11");
+    expect(updated.totalAreaHa).toBe(200);
   });
 
   it("leaves the original input untouched when the event has no blocks or deltas", () => {
-    const noop: FieldEvent = { effectiveDate: "2025-10-01", blockedFieldIds: [], seedDeltaAreaHaByCycle: {}, notes: [] };
+    const noop: FieldEvent = {
+      effectiveDate: "2025-10-01",
+      severity: "operational",
+      type: "other",
+      blockedFieldIds: [],
+      seedDeltaAreaHaByLot: {},
+      notes: [],
+    };
     const updated = applyFieldEvent(input, noop);
     expect(updated.fields).toEqual(input.fields);
     expect(updated.totalAreaHa).toBe(input.totalAreaHa);

@@ -2,7 +2,14 @@ import { centsToReais, seasonFinancialResultCents } from "./finance";
 import { generateCandidates, type PlanCandidate } from "./candidates";
 import { hashObject, median, nearestRankPercentile } from "./metrics";
 import { compareCandidateRanking } from "./ranking";
-import type { FarmOperationInput, HistoricalDataset, PlanResult } from "./schemas";
+import {
+  FarmOperationInputSchema,
+  HistoricalDatasetSchema,
+  PlanResultSchema,
+  type FarmOperationInput,
+  type HistoricalDataset,
+  type PlanResult,
+} from "./schemas";
 import { buildSequence, secondCropViableAreaHa, totalOperationDays, type SequenceItem } from "./simulator";
 
 type OrderEvaluation = {
@@ -18,12 +25,51 @@ type OrderEvaluation = {
   operationDays: number;
 };
 
+const RANKING_CRITERIA = [
+  "secondCropAreaP20Ha:desc",
+  "targetReachedSeasons:desc",
+  "viableSeasons:desc",
+  "financialP20:desc",
+  "operationDays:asc",
+  "candidateKey:asc",
+] as const;
+
+function publicSequence(evaluation: OrderEvaluation): PlanResult["sequence"] {
+  return evaluation.sequence.map(
+    ({ fieldId, seedLotId, cycleDays, startDate, endDate, secondCropCandidate }) => ({
+      fieldId,
+      seedLotId,
+      cycleDays,
+      startDate,
+      endDate,
+      secondCropCandidate,
+    }),
+  );
+}
+
+function evidenceMetrics(evaluation: OrderEvaluation) {
+  return {
+    targetReachedSeasons: evaluation.targetReachedSeasons,
+    viableSeasons: evaluation.viableSeasons,
+    secondCropAreaP20Ha: evaluation.secondCropAreaP20Ha,
+    financialMedian: evaluation.financialMedian,
+    financialP20: evaluation.financialP20,
+    financialWorstObserved: evaluation.financialWorstObserved,
+    operationDays: evaluation.operationDays,
+  };
+}
+
 function evaluateOrder(
   input: FarmOperationInput,
   dataset: HistoricalDataset,
   candidate: PlanCandidate,
 ): OrderEvaluation {
-  const sequence = buildSequence(input, candidate.fieldOrder, candidate.cycleDaysByField);
+  const sequence = buildSequence(
+    input,
+    candidate.fieldOrder,
+    candidate.cycleDaysByField,
+    candidate.seedLotIdByField,
+  );
   const totalAreaHa = input.fields.reduce((sum, f) => sum + f.areaHa, 0);
   const operationDays = totalOperationDays(sequence);
 
@@ -67,19 +113,23 @@ export function buildPlan(input: FarmOperationInput, dataset: HistoricalDataset)
   if (dataset.records.length !== 41) {
     throw new Error("o planejador exige exatamente 41 safras históricas");
   }
+  const validInput = FarmOperationInputSchema.parse(input);
+  const validDataset = HistoricalDatasetSchema.parse(dataset);
 
-  const evaluations = generateCandidates(input).map((candidate) => evaluateOrder(input, dataset, candidate));
+  const evaluations = generateCandidates(validInput).map((candidate) =>
+    evaluateOrder(validInput, validDataset, candidate),
+  );
   const baseline = evaluations.find((evaluation) => evaluation.candidate.baseline)!;
   const winner = [...evaluations].sort(compareEvaluations)[0];
 
-  return {
-    inputHash: hashObject(input),
-    datasetHash: hashObject(dataset),
+  return PlanResultSchema.parse({
+    inputHash: hashObject(validInput),
+    datasetHash: hashObject(validDataset),
     dataset: {
-      source: dataset.source,
-      seasons: dataset.seasons,
-      cached: dataset.cached,
-      real: dataset.real,
+      source: validDataset.source,
+      seasons: validDataset.seasons,
+      cached: validDataset.cached,
+      real: validDataset.real,
     },
     assumptions: [
       `foram avaliados ${evaluations.length} candidatos válidos pelo ranking determinístico`,
@@ -87,21 +137,20 @@ export function buildPlan(input: FarmOperationInput, dataset: HistoricalDataset)
       "o ciclo do milho usa o padrão configurado no perfil da cultura, não uma cultivar específica por talhão",
       "o resultado financeiro usa somente margens e custos informados; não representa garantia de lucro",
     ],
-    sequence: winner.sequence.map(({ fieldId, cycleDays, startDate, endDate, secondCropCandidate }) => ({
-      fieldId,
-      cycleDays,
-      startDate,
-      endDate,
-      secondCropCandidate,
-    })),
+    candidatesEvaluated: evaluations.length,
+    recommendedCandidateKey: winner.candidate.key,
+    rankingCriteria: RANKING_CRITERIA,
+    baseline: {
+      candidateKey: baseline.candidate.key,
+      sequence: publicSequence(baseline),
+      historicalOutcomes: baseline.historicalOutcomes,
+      metrics: evidenceMetrics(baseline),
+    },
+    sequence: publicSequence(winner),
     historicalOutcomes: winner.historicalOutcomes,
     metrics: {
-      viableSeasons: winner.viableSeasons,
-      secondCropAreaP20Ha: winner.secondCropAreaP20Ha,
-      financialMedian: winner.financialMedian,
-      financialP20: winner.financialP20,
-      financialWorstObserved: winner.financialWorstObserved,
+      ...evidenceMetrics(winner),
       differenceFromBaselineP20: winner.financialP20 - baseline.financialP20,
     },
-  };
+  });
 }

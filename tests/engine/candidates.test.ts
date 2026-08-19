@@ -22,8 +22,8 @@ function operation(overrides: Partial<FarmOperationInput> = {}): FarmOperationIn
       { id: "B", areaHa: 100, priority: "soy_only" },
     ],
     seedLots: [
-      { crop: "soybean", cycleDays: 90, availableAreaHa: 100 },
-      { crop: "soybean", cycleDays: 120, availableAreaHa: 100 },
+      { id: "L90", crop: "soybean", cycleDays: 90, availableAreaHa: 100 },
+      { id: "L120", crop: "soybean", cycleDays: 120, availableAreaHa: 100 },
     ],
     secondCropTargetAreaHa: 100,
     finance: { soybeanMarginPerHa: 1000, cornMarginPerHa: 800 },
@@ -55,14 +55,14 @@ describe("generateCandidates", () => {
 
   it("falha claramente quando nenhum lote consegue atender os talhões", () => {
     const input = operation({
-      seedLots: [{ crop: "soybean", cycleDays: 90, availableAreaHa: 150 }],
+      seedLots: [{ id: "L90", crop: "soybean", cycleDays: 90, availableAreaHa: 150 }],
     });
     expect(() => generateCandidates(input)).toThrow(/nenhum candidato/);
   });
 
   it("rejeita ciclo fora do perfil de soja validado", () => {
     const input = operation({
-      seedLots: [{ crop: "soybean", cycleDays: 200, availableAreaHa: 200 }],
+      seedLots: [{ id: "L200", crop: "soybean", cycleDays: 200, availableAreaHa: 200 }],
     });
     expect(() => generateCandidates(input)).toThrow(/fora do perfil validado/);
   });
@@ -75,6 +75,29 @@ describe("generateCandidates", () => {
     expect(() => generateCandidates(operation({ fields: duplicatedFields }))).toThrow(/IDs dos talhões/);
   });
 
+  it("preserva lotes distintos mesmo quando possuem o mesmo ciclo", () => {
+    const candidates = generateCandidates(operation({
+      seedLots: [
+        { id: "LOTE-A", crop: "soybean", cycleDays: 90, availableAreaHa: 100 },
+        { id: "LOTE-B", crop: "soybean", cycleDays: 90, availableAreaHa: 100 },
+      ],
+    }));
+
+    expect(candidates).toHaveLength(4);
+    for (const candidate of candidates) {
+      expect(new Set(Object.values(candidate.seedLotIdByField))).toEqual(new Set(["LOTE-A", "LOTE-B"]));
+    }
+  });
+
+  it("rejeita IDs de lote repetidos", () => {
+    expect(() => generateCandidates(operation({
+      seedLots: [
+        { id: "LOTE", crop: "soybean", cycleDays: 90, availableAreaHa: 100 },
+        { id: "LOTE", crop: "soybean", cycleDays: 120, availableAreaHa: 100 },
+      ],
+    }))).toThrow(/IDs dos lotes/);
+  });
+
   it("limita o caminho canônico a quatro talhões e cem candidatos", () => {
     const fields = ["A", "B", "C", "D"].map((id) => ({
       id,
@@ -82,6 +105,7 @@ describe("generateCandidates", () => {
       priority: "second_crop" as const,
     }));
     const seedLots = [90, 100, 110, 120].map((cycleDays) => ({
+      id: `L${cycleDays}`,
       crop: "soybean" as const,
       cycleDays,
       availableAreaHa: 100,
@@ -101,7 +125,7 @@ describe("generateCandidates", () => {
     const candidates = generateCandidates(operation({
       fields,
       totalAreaHa: 100,
-      seedLots: [{ crop: "soybean", cycleDays: 100, availableAreaHa: 100 }],
+      seedLots: [{ id: "L100", crop: "soybean", cycleDays: 100, availableAreaHa: 100 }],
     }));
 
     expect(candidates).toHaveLength(24);

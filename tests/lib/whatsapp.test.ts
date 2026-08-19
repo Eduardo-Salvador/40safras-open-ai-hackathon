@@ -16,16 +16,37 @@ const plan: PlanResult = {
   datasetHash: "ef567890",
   dataset: { source: "open-meteo:archive-api (ERA5, precipitation_sum)", seasons: 41, cached: false, real: true },
   assumptions: ["some declared assumption"],
+  candidatesEvaluated: 1,
+  recommendedCandidateKey: "T-01@SOJA-98",
+  rankingCriteria: ["secondCropAreaP20Ha:desc", "targetReachedSeasons:desc", "viableSeasons:desc", "financialP20:desc", "operationDays:asc", "candidateKey:asc"],
+  baseline: {
+    candidateKey: "T-01@SOJA-98",
+    sequence: [
+      { fieldId: "T-01", seedLotId: "SOJA-98", cycleDays: 98, startDate: "2025-09-15", endDate: "2025-12-22", secondCropCandidate: true },
+    ],
+    historicalOutcomes: Array.from({ length: 41 }, (_, index) => ({ season: `s${index}`, secondCropViableAreaHa: 0, financialResult: 1_572_500 })),
+    metrics: {
+      targetReachedSeasons: 29,
+      viableSeasons: 29,
+      secondCropAreaP20Ha: 0,
+      financialMedian: 2_268_500,
+      financialP20: 1_572_500,
+      financialWorstObserved: 900_000,
+      operationDays: 200,
+    },
+  },
   sequence: [
-    { fieldId: "T-01", cycleDays: 98, startDate: "2025-09-15", endDate: "2025-12-22", secondCropCandidate: true },
+    { fieldId: "T-01", seedLotId: "SOJA-98", cycleDays: 98, startDate: "2025-09-15", endDate: "2025-12-22", secondCropCandidate: true },
   ],
-  historicalOutcomes: [],
+  historicalOutcomes: Array.from({ length: 41 }, (_, index) => ({ season: `s${index}`, secondCropViableAreaHa: 0, financialResult: 1_572_500 })),
   metrics: {
+    targetReachedSeasons: 29,
     viableSeasons: 29,
     secondCropAreaP20Ha: 0,
     financialMedian: 2_268_500,
     financialP20: 1_572_500,
     financialWorstObserved: 900_000,
+    operationDays: 200,
     differenceFromBaselineP20: 0,
   },
 };
@@ -50,12 +71,14 @@ describe("buildReplanWhatsAppMessage", () => {
       after: { ...plan, metrics: { ...plan.metrics, secondCropAreaP20Ha: 150 } },
       event: {
         effectiveDate: "2025-10-01",
+        severity: "critical",
+        type: "field_blocked",
         blockedFieldIds: ["T-02"],
-        seedDeltaAreaHaByCycle: {},
+        seedDeltaAreaHaByLot: {},
         notes: ["alagamento"],
       },
       changes: [
-        { entity: "talhão T-02", before: "no plano", after: "bloqueado", reason: "bloqueado pelo evento de campo" },
+        { code: "FIELD_BLOCKED", entity: "talhão T-02", before: "no plano", after: "bloqueado", reason: "bloqueado pelo evento de campo" },
       ],
     };
 

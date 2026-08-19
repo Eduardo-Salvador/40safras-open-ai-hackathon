@@ -4,6 +4,7 @@ import type { FarmOperationInput, FieldBlock, HistoricalSeason } from "./schemas
 
 export type SequenceItem = {
   fieldId: string;
+  seedLotId: string;
   areaHa: number;
   priority: FieldBlock["priority"];
   cycleDays: number;
@@ -14,29 +15,37 @@ export type SequenceItem = {
 };
 
 /**
- * Declared prototype simplification: second-crop fields draw the fastest
- * available soybean cultivar, soy-only fields draw the slowest. There is no
- * seed-lot depletion tracking yet — see docs/references/DOMAIN_NOTES.md.
+ * Direct simulator calls fall back to the fastest/slowest compatible lot.
+ * The planner always supplies the explicit, stock-checked lot assignment.
  */
-function assignSoybeanCycleDays(field: FieldBlock, input: FarmOperationInput): number {
-  const cycles = input.seedLots.map((lot) => lot.cycleDays);
-  return field.priority === "second_crop" ? Math.min(...cycles) : Math.max(...cycles);
+function assignSoybeanLot(field: FieldBlock, input: FarmOperationInput) {
+  return [...input.seedLots].sort((a, b) =>
+    field.priority === "second_crop"
+      ? a.cycleDays - b.cycleDays || a.id.localeCompare(b.id)
+      : b.cycleDays - a.cycleDays || a.id.localeCompare(b.id),
+  )[0];
 }
 
 export function buildSequence(
   input: FarmOperationInput,
   fieldOrder: FieldBlock[],
   cycleDaysByField?: Readonly<Record<string, number>>,
+  seedLotIdByField?: Readonly<Record<string, string>>,
 ): SequenceItem[] {
   const corn = getCropProfile("corn");
   let cumulativeDays = 0;
 
   return fieldOrder.map((field) => {
     const plantDays = Math.ceil(field.areaHa / input.planterCapacityHaPerDay);
-    const startDate = addDays(input.startDate, cumulativeDays);
-    cumulativeDays += plantDays;
+    const unconstrainedStartDate = addDays(input.startDate, cumulativeDays);
+    const startDate = field.availableFrom && field.availableFrom > unconstrainedStartDate
+      ? field.availableFrom
+      : unconstrainedStartDate;
+    cumulativeDays = daysBetween(input.startDate, startDate) + plantDays;
 
-    const cycleDays = cycleDaysByField?.[field.id] ?? assignSoybeanCycleDays(field, input);
+    const fallbackLot = assignSoybeanLot(field, input);
+    const cycleDays = cycleDaysByField?.[field.id] ?? fallbackLot.cycleDays;
+    const seedLotId = seedLotIdByField?.[field.id] ?? fallbackLot.id;
     const endDate = addDays(startDate, cycleDays);
     const secondCropCandidate = field.priority === "second_crop";
 
@@ -46,6 +55,7 @@ export function buildSequence(
 
     return {
       fieldId: field.id,
+      seedLotId,
       areaHa: field.areaHa,
       priority: field.priority,
       cycleDays,

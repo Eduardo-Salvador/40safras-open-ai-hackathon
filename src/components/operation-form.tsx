@@ -30,8 +30,8 @@ const FIELDS: FarmOperationInput["fields"] = [
 ];
 
 const SEED_LOTS: FarmOperationInput["seedLots"] = [
-  { crop: "soybean", cycleDays: 98, availableAreaHa: 480 },
-  { crop: "soybean", cycleDays: 112, availableAreaHa: 370 },
+  { id: "SOJA-98", crop: "soybean", cycleDays: 98, availableAreaHa: 480 },
+  { id: "SOJA-112", crop: "soybean", cycleDays: 112, availableAreaHa: 370 },
 ];
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -117,8 +117,10 @@ export function OperationForm() {
 
   const FIELD_EVENT: FieldEvent = {
     effectiveDate: startDate,
+    severity: "critical",
+    type: "field_blocked",
     blockedFieldIds: ["T-01"],
-    seedDeltaAreaHaByCycle: {},
+    seedDeltaAreaHaByLot: {},
     notes: ["chuva forte alagou o talhão T-01"],
   };
 
