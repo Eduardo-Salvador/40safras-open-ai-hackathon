@@ -70,4 +70,29 @@ describe("POST /api/plan", () => {
     expect(response.status).toBe(409);
     expect((await response.json()).code).toBe("TOKEN_NOT_FOUND");
   });
+
+  it("produces the same inputHash for voice, natural text and form transports", async () => {
+    const modes = [
+      { name: "voice", method: "voice" as const },
+      { name: "text", method: "button" as const },
+      { name: "form", method: "button" as const },
+    ];
+    const hashes: string[] = [];
+
+    for (const mode of modes) {
+      const sessionId = `${mode.name}-same-operation`;
+      const draftVersion = `${mode.name}-v1`;
+      const challenge = await issueToken(sessionId, draftVersion);
+      const response = await postPlan(
+        sessionId,
+        draftVersion,
+        challenge.confirmationToken,
+        mode.method,
+      );
+      expect(response.status).toBe(200);
+      hashes.push((await response.json()).plan.inputHash);
+    }
+
+    expect(new Set(hashes)).toEqual(new Set([hashes[0]]));
+  });
 });
