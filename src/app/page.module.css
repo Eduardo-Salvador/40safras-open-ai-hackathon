@@ -453,6 +453,34 @@
   margin: 1rem 0 0;
 }
 
+.transcriptBox {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--paper) 82%, white);
+  text-align: left;
+}
+
+.transcriptBox strong {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.transcriptBox p {
+  margin: 0.45rem 0 0;
+  line-height: 1.55;
+}
+
+.voiceReview {
+  margin: 0.75rem 0;
+  color: var(--risk);
+  font-size: 0.82rem;
+  text-align: left;
+}
+
 .typeInvite {
   display: block;
   margin: 1rem auto 0;

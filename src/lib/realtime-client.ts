@@ -40,6 +40,8 @@ const ConfirmFieldEventArgsSchema = z.object({
 });
 
 export type RealtimeVoiceHandlers = {
+  onTranscript?: (transcript: string) => void;
+  onError?: (message: string) => void;
   updateOperationDraft: (args: z.infer<typeof UpdateOperationDraftArgsSchema>) => unknown | Promise<unknown>;
   requestOperationConfirmation: (args: z.infer<typeof DraftVersionArgsSchema>) => unknown | Promise<unknown>;
   confirmOperationAndCalculate: (args: z.infer<typeof ConfirmOperationArgsSchema>) => unknown | Promise<unknown>;
@@ -127,6 +129,30 @@ export async function connectRealtimeVoiceSession(
   const session = new RealtimeSession(agent, {
     model: credentials.model,
     tracingDisabled: true,
+    config: {
+      audio: {
+        input: {
+          transcription: { model: "gpt-4o-mini-transcribe", language: "pt" },
+          noiseReduction: { type: "near_field" },
+          turnDetection: {
+            type: "semantic_vad",
+            createResponse: true,
+            interruptResponse: true,
+          },
+        },
+      },
+    },
+  });
+
+  session.on("transport_event", (event) => {
+    if (event.type === "conversation.item.input_audio_transcription.completed") {
+      const transcript = typeof event.transcript === "string" ? event.transcript.trim() : "";
+      if (transcript) handlers.onTranscript?.(transcript);
+    }
+  });
+  session.on("error", (event) => {
+    const message = event.error instanceof Error ? event.error.message : "Falha na sessão de voz.";
+    handlers.onError?.(message);
   });
 
   await session.connect({ apiKey: credentials.clientSecret });

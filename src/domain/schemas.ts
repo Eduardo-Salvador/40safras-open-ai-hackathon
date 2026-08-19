@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+export const BrazilianStateCodeSchema = z.enum([
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+  "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+]);
+
 export const MunicipalitySchema = z.object({
   name: z.string().min(1),
   state: z.string().length(2),
@@ -49,7 +54,7 @@ export const OperationDraftSchema = z.object({
   municipalityQuery: z
     .object({
       name: z.string().min(1).optional(),
-      state: z.string().length(2).optional(),
+      state: BrazilianStateCodeSchema.optional(),
     })
     .optional(),
   totalAreaHa: z.number().positive().optional(),

@@ -130,6 +130,29 @@
   font-size: 0.82rem;
 }
 
+.itemEditor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(7rem, 1fr));
+  gap: 0.5rem;
+}
+
+.itemEditor label {
+  color: var(--ink-dim);
+  font-size: 0.72rem;
+}
+
+.itemEditor input,
+.itemEditor select {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.35rem;
+  background: var(--bg);
+  color: var(--ink);
+}
+
 .areaBadge {
   background: color-mix(in srgb, var(--corn) 14%, var(--bg-raised));
   border: 1px solid var(--corn-dim);

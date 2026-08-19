@@ -104,7 +104,7 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
       const body = (await readJson(response)) as SessionResponse;
       if (!response.ok || !body.authenticated) {
         setFlow("login");
-        setMessage("E-mail ou senha não conferem. Tente novamente.");
+        setMessage("Usuário ou senha não conferem. Tente novamente.");
         return;
       }
 
@@ -217,11 +217,12 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
             <p className={styles.formHint}>Assim você consegue contar o imprevisto e fazer outro plano sem perder este resultado.</p>
           </div>
           <label htmlFor={`${formId}-email`}>
-            E-mail
+            Usuário
             <input
               id={`${formId}-email`}
-              type="email"
+              type="text"
               autoComplete="username"
+              placeholder="demo"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
