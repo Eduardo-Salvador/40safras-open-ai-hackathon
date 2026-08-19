@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type {
   FarmOperationInput,
   HistoricalDataset,
@@ -22,9 +22,32 @@ type PlanAccessProps = {
   onReplan?: (replan: ReplanResult) => void;
 };
 
-type Flow = "idle" | "checking" | "login" | "saving" | "report" | "replanning" | "complete" | "error";
+type Flow = "idle" | "checking" | "login" | "saving" | "record" | "review" | "replanning" | "complete" | "error";
 
 type SessionResponse = { authenticated: boolean; username?: string };
+
+type SpeechResultEvent = {
+  resultIndex: number;
+  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
+};
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechResultEvent) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
 
 function createBrowserId(prefix: string): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return `${prefix}-${crypto.randomUUID()}`;
@@ -38,6 +61,7 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
 export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessProps) {
   const formId = useId();
   const sessionId = useRef(createBrowserId("field-event"));
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const [flow, setFlow] = useState<Flow>("idle");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,8 +70,12 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
   const [effectiveDate, setEffectiveDate] = useState(operation.startDate);
   const [blockedFieldIds, setBlockedFieldIds] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const [speechUnavailable, setSpeechUnavailable] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [latestReplan, setLatestReplan] = useState<ReplanResult | null>(null);
+
+  useEffect(() => () => recognitionRef.current?.stop(), []);
 
   async function savePlan(): Promise<SavedAnalysis | null> {
     setFlow("saving");
@@ -65,8 +93,8 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
 
     const saved = body.analysis as SavedAnalysis;
     setAnalysis(saved);
-    setFlow("report");
-    setMessage("Plano guardado. Agora conte o que aconteceu para refazer a ordem do plantio.");
+    setFlow("record");
+    setMessage("Plano guardado. Agora toque no microfone e conte o que aconteceu.");
     return saved;
   }
 
@@ -123,6 +151,66 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
     );
   }
 
+  function startListening() {
+    const speechWindow = window as SpeechWindow;
+    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+
+    if (!Recognition) {
+      setSpeechUnavailable(true);
+      setMessage("Este navegador não conseguiu ouvir sua fala. Você pode escrever o imprevisto logo abaixo.");
+      return;
+    }
+
+    const recognition = new Recognition();
+    const transcriptBeforeRecording = notes.trim();
+    let finalTranscript = "";
+
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "pt-BR";
+    recognition.onresult = (event) => {
+      let interimTranscript = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const phrase = event.results[index][0].transcript.trim();
+        if (event.results[index].isFinal) finalTranscript = `${finalTranscript} ${phrase}`.trim();
+        else interimTranscript = `${interimTranscript} ${phrase}`.trim();
+      }
+      setNotes([transcriptBeforeRecording, finalTranscript, interimTranscript].filter(Boolean).join(" "));
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+      setMessage("Não conseguimos ouvir bem. Tente novamente ou escreva o que aconteceu.");
+    };
+    recognition.onend = () => setIsListening(false);
+
+    recognitionRef.current = recognition;
+    setMessage("Pode falar. Conte o que aconteceu, quando começou e quais talhões foram afetados.");
+    setIsListening(true);
+    recognition.start();
+  }
+
+  function stopListening() {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setIsListening(false);
+  }
+
+  function reviewRecording() {
+    stopListening();
+    const normalized = notes.toLocaleLowerCase("pt-BR");
+    const mentionedFields = operation.fields
+      .filter((field) => normalized.includes(field.id.toLocaleLowerCase("pt-BR")))
+      .map((field) => field.id);
+
+    if (!notes.trim()) {
+      setMessage("Conte ou escreva o que aconteceu antes de continuar.");
+      return;
+    }
+    if (blockedFieldIds.length === 0 && mentionedFields.length > 0) setBlockedFieldIds(mentionedFields);
+    setMessage(null);
+    setFlow("review");
+  }
+
   async function submitEvent(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!analysis) return;
@@ -173,7 +261,7 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
       setMessage("Pronto. Guardamos o imprevisto e refizemos o plano a partir do que você contou.");
       onReplan?.(replan);
     } catch {
-      setFlow("report");
+      setFlow("review");
       setMessage("Não conseguimos refazer o plano agora. Seus dados continuam guardados; tente novamente.");
     }
   }
@@ -183,6 +271,8 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
     setUsername(null);
     setAnalysis(null);
     setLatestReplan(null);
+    setNotes("");
+    setBlockedFieldIds([]);
     setFlow("idle");
     setMessage("Você saiu deste acesso. O resultado calculado continua aberto nesta tela.");
   }
@@ -248,7 +338,7 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
 
       {flow === "saving" ? <p className={styles.status}>Guardando seu plano…</p> : null}
 
-      {analysis && (flow === "report" || flow === "replanning" || flow === "complete") ? (
+      {analysis && (flow === "record" || flow === "review" || flow === "replanning" || flow === "complete") ? (
         <div className={styles.savedContext}>
           <div>
             <p className={styles.savedLabel}>Plano guardado</p>
@@ -258,11 +348,47 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
         </div>
       ) : null}
 
-      {flow === "report" || flow === "replanning" ? (
+      {flow === "record" ? (
+        <div className={styles.voiceReport}>
+          <div>
+            <p className={styles.formTitle}>Conte o que aconteceu</p>
+            <p className={styles.formHint}>Fale do seu jeito. Se souber, diga quando começou e qual talhão foi afetado.</p>
+          </div>
+          <button
+            type="button"
+            className={styles.voiceAction}
+            data-listening={isListening ? "true" : "false"}
+            onClick={isListening ? stopListening : startListening}
+          >
+            <span className={styles.voiceActionIcon} aria-hidden="true">{isListening ? "■" : "●"}</span>
+            <strong>{isListening ? "Parar gravação" : "Toque para falar"}</strong>
+            <small>{isListening ? "Estamos ouvindo você" : "O áudio não será guardado"}</small>
+          </button>
+          <label htmlFor={`${formId}-transcript`}>
+            {speechUnavailable ? "Escreva o que aconteceu" : "O que entendemos da sua fala"}
+            <textarea
+              id={`${formId}-transcript`}
+              rows={4}
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="Ex.: choveu forte hoje e não dá para entrar no talhão T-01."
+            />
+          </label>
+          <button type="button" className={styles.primaryAction} onClick={reviewRecording}>
+            Conferir o que foi entendido →
+          </button>
+        </div>
+      ) : null}
+
+      {flow === "review" || flow === "replanning" ? (
         <form className={styles.eventForm} onSubmit={submitEvent}>
           <div>
-            <p className={styles.formTitle}>Conte o que mudou</p>
-            <p className={styles.formHint}>Marque o talhão que não pode seguir agora. Depois refazemos o plano com essa mudança.</p>
+            <p className={styles.formTitle}>Confira o que entendemos</p>
+            <p className={styles.formHint}>Ajuste se precisar. O plano só será refeito depois da sua confirmação.</p>
+          </div>
+          <div className={styles.spokenSummary}>
+            <span>Seu relato</span>
+            <p>{notes}</p>
           </div>
           <label htmlFor={`${formId}-date`}>
             Quando isso começou?
@@ -284,18 +410,23 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
             </div>
           </fieldset>
           <label htmlFor={`${formId}-notes`}>
-            Quer explicar melhor? (opcional)
+            Corrigir ou completar o relato
             <textarea
               id={`${formId}-notes`}
               rows={3}
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              placeholder="Ex.: choveu forte e não dá para entrar no talhão."
+              placeholder="Conte o que precisa ser corrigido."
             />
           </label>
-          <button type="submit" className={styles.primaryAction} disabled={flow === "replanning"}>
-            {flow === "replanning" ? "Refazendo o plano…" : "Confirmar imprevisto e refazer plano"}
-          </button>
+          <div className={styles.formActions}>
+            <button type="button" className={styles.quietAction} onClick={() => setFlow("record")} disabled={flow === "replanning"}>
+              Voltar e gravar de novo
+            </button>
+            <button type="submit" className={styles.primaryAction} disabled={flow === "replanning"}>
+              {flow === "replanning" ? "Refazendo o plano…" : "Confirmar e refazer plano"}
+            </button>
+          </div>
         </form>
       ) : null}
 
@@ -306,7 +437,11 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
             No cenário mais cauteloso, a área de milho mudou de {latestReplan.before.metrics.secondCropAreaP20Ha} ha para {latestReplan.after.metrics.secondCropAreaP20Ha} ha.
             {replanDelta !== null ? ` Isso representa ${replanDelta >= 0 ? "+" : ""}${replanDelta} ha.` : ""}
           </p>
-          <button type="button" className={styles.primaryAction} onClick={() => setFlow("report")}>Registrar outro imprevisto</button>
+          <button type="button" className={styles.primaryAction} onClick={() => {
+            setNotes("");
+            setBlockedFieldIds([]);
+            setFlow("record");
+          }}>Registrar outro imprevisto</button>
         </div>
       ) : null}
 

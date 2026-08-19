@@ -47,8 +47,9 @@ export async function GET(request: NextRequest) {
       source: "OpenStreetMap Nominatim",
     });
   } catch (error) {
+    console.error("territory search failed", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "territory search failed" },
+      { error: "Não foi possível buscar esse lugar agora." },
       { status: 502 },
     );
   }

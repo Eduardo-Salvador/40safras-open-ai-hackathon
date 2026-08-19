@@ -128,11 +128,15 @@ compartilhamento, mas não o grava nem promete histórico. A aplicação não pe
 iniciar, durante a coleta ou para calcular.
 
 Quando o plano estiver salvo, a mesma superfície confirma qual plano está sendo usado e
-abre o relato do imprevisto. O plano calculado permanece como referência e cada replano
-fica ligado a ele. Um plano não salvo não inicia o fluxo de replano persistido: login e
-salvamento são concluídos como parte da intenção de registrar o problema. A copy não chama
-o histórico de “meus planos” nem sugere contas individuais enquanto o acesso for
-single-user.
+abre um novo relato por voz como ação principal. A pessoa grava ou fala o que aconteceu;
+texto continua disponível como alternativa se o microfone ou o reconhecimento de voz
+falhar. A aplicação mostra o texto entendido, a data e os talhões afetados para correção.
+Somente uma confirmação explícita transforma esse rascunho em evento e autoriza o replano.
+O plano calculado permanece como referência e cada replano fica ligado a ele. Um plano não
+salvo não inicia o fluxo de replano persistido: login e salvamento são concluídos como
+parte da intenção de registrar o problema. A copy não chama o histórico de “meus planos”
+nem sugere contas individuais enquanto o acesso for single-user. O áudio bruto não é
+gravado no histórico do plano.
 
 ## Estrutura do layout
 
@@ -269,6 +273,8 @@ Uma alteração de frontend só está alinhada quando:
 - apresenta plano, prova, proveniência e limitações sem formato de dashboard;
 - pede identificação somente depois do resultado e do toque em “Aconteceu um imprevisto?”,
   salvando o plano antes de abrir o relato do problema;
+- depois do login, faz da voz a ação principal do imprevisto, mostra o que foi entendido,
+  permite corrigir e exige confirmação antes de replanejar;
 - rotula o campo como “E-mail”, envia-o como `username` e usa somente os contratos já
   implementados de autenticação e análises;
 - mostra se o plano está salvo e deixa explícito, quando histórico estiver visível, que a
@@ -292,3 +298,4 @@ Uma alteração de frontend só está alinhada quando:
 | SD-011 | 2026-08-19 | Adotar a paleta clara da imagem conceitual gerada | Aproximar o produto de papel cru, verde-floresta, ocre, azul-petróleo e argila, com leitura simples e alto contraste |
 | SD-012 | 2026-08-19 | Implementar a demonstração com login único por e-mail/senha e arquivo local de análises | Substitui a premissa de provedor/ownership de SD-010: a UI envia e-mail como `username`, reutiliza os contratos de `origin/Eduarco`, mantém login só ao salvar e não alega multi-tenancy ou durabilidade em Vercel |
 | SD-013 | 2026-08-19 | Pedir login no fim, quando a pessoa escolhe registrar um imprevisto | Mantém o primeiro plano aberto; autentica e salva esse plano como referência antes de liberar o relato e o replano persistido |
+| SD-014 | 2026-08-19 | Repetir voz, revisão e confirmação no fluxo de imprevisto | O produtor explica a mudança do seu jeito, confere o entendimento e só então autoriza o replano e a comparação com o plano anterior |

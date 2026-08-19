@@ -29,7 +29,7 @@ type TerritoryProject = {
   placeLabel: string;
 };
 
-type SearchResult = {
+export type TerritorySearchResult = {
   id: string;
   name: string;
   displayName: string;
@@ -105,9 +105,20 @@ type TerritoryEditorProps = {
   embedded?: boolean;
   onContinue?: () => void;
   continueLabel?: string;
+  initialSearch?: string;
+  initialLocation?: { latitude: number; longitude: number };
+  onLocationSelected?: (result: TerritorySearchResult) => void | Promise<void>;
 };
 
-export function TerritoryEditor({ embedded = false, onContinue, continueLabel = "Usar esta localização →" }: TerritoryEditorProps) {
+export function TerritoryEditor({
+  embedded = false,
+  onContinue,
+  continueLabel = "Usar esta localização →",
+  initialSearch = "",
+  initialLocation,
+  onLocationSelected,
+}: TerritoryEditorProps) {
+  const initialLocationRef = useRef(initialLocation);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const projectRef = useRef<TerritoryProject>(EMPTY_PROJECT);
@@ -123,9 +134,9 @@ export function TerritoryEditor({ embedded = false, onContinue, continueLabel = 
   const [draft, setDraft] = useState<Coordinate[]>([]);
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("Pesquise um lugar ou navegue pelo mundo.");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<TerritorySearchResult[]>([]);
   const [weather, setWeather] = useState<WeatherForecast | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherTargetKey, setWeatherTargetKey] = useState("");
@@ -181,10 +192,11 @@ export function TerritoryEditor({ embedded = false, onContinue, continueLabel = 
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
+    const startingLocation = initialLocationRef.current;
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      center: [-55.7106, -12.5425],
-      zoom: 4.5,
+      center: startingLocation ? [startingLocation.longitude, startingLocation.latitude] : [-55.7106, -12.5425],
+      zoom: startingLocation ? 10 : 4.5,
       minZoom: 1.35,
       maxZoom: 17,
       style: {
@@ -528,18 +540,18 @@ export function TerritoryEditor({ embedded = false, onContinue, continueLabel = 
     setResults([]);
     try {
       const response = await fetch(`/api/territory-search?q=${encodeURIComponent(search.trim())}`);
-      const body = (await response.json()) as { results?: SearchResult[]; error?: string };
-      if (!response.ok) throw new Error(body.error ?? "Busca indisponível");
+      const body = (await response.json()) as { results?: TerritorySearchResult[] };
+      if (!response.ok) throw new Error("search unavailable");
       setResults(body.results ?? []);
       if (!body.results?.length) setNotice("Nenhum local encontrado.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Busca indisponível");
+    } catch {
+      setNotice("Não foi possível buscar esse lugar agora. Tente novamente.");
     } finally {
       setSearching(false);
     }
   };
 
-  const goToPlace = (result: SearchResult) => {
+  const goToPlace = (result: TerritorySearchResult) => {
     const map = mapRef.current;
     if (!map) return;
     if (result.boundingBox?.length === 4) {
@@ -558,6 +570,7 @@ export function TerritoryEditor({ embedded = false, onContinue, continueLabel = 
     setResults([]);
     applyProject({ ...projectRef.current, placeLabel: result.displayName });
     setNotice(`Local selecionado: ${result.displayName}`);
+    void onLocationSelected?.(result);
   };
 
   const toggleTerrain = () => {
@@ -585,8 +598,8 @@ export function TerritoryEditor({ embedded = false, onContinue, continueLabel = 
       setWeather(body);
       setWeatherTargetKey(requestedTargetKey);
       setNotice(`Previsão atualizada para o centro de ${target.title}.`);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Previsão indisponível");
+    } catch {
+      setNotice("Não foi possível consultar a previsão agora. Tente novamente.");
     } finally {
       setWeatherLoading(false);
     }

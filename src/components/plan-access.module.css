@@ -55,7 +55,8 @@
 .startCard > p { margin: 0 0 0.85rem; }
 
 .loginForm,
-.eventForm {
+.eventForm,
+.voiceReport {
   display: grid;
   gap: 0.95rem;
   max-width: 34rem;
@@ -66,6 +67,7 @@
 
 .loginForm label,
 .eventForm > label,
+.voiceReport > label,
 .eventForm fieldset {
   display: grid;
   gap: 0.4rem;
@@ -76,7 +78,8 @@
 
 .loginForm input,
 .eventForm input[type="date"],
-.eventForm textarea {
+.eventForm textarea,
+.voiceReport textarea {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--rule-strong);
@@ -91,6 +94,8 @@
 .loginForm input:focus-visible,
 .eventForm input:focus-visible,
 .eventForm textarea:focus-visible,
+.voiceReport textarea:focus-visible,
+.voiceAction:focus-visible,
 .primaryAction:focus-visible,
 .quietAction:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--corn) 68%, transparent);
@@ -99,6 +104,79 @@
 
 .eventForm fieldset { border: 0; margin: 0; padding: 0; }
 .eventForm legend { padding: 0; }
+
+.voiceReport {
+  margin-top: 1.1rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--rule);
+}
+
+.voiceAction {
+  align-items: center;
+  background: color-mix(in srgb, var(--soy) 9%, var(--bg-raised));
+  border: 1px solid var(--soy-dim);
+  border-radius: 0.7rem;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font: inherit;
+  gap: 0.35rem;
+  justify-content: center;
+  min-height: 10rem;
+  padding: 1.25rem;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.voiceAction:hover {
+  background: color-mix(in srgb, var(--soy) 14%, var(--bg-raised));
+  transform: translateY(-1px);
+}
+
+.voiceAction[data-listening="true"] {
+  background: color-mix(in srgb, var(--risk) 10%, var(--bg-raised));
+  border-color: var(--risk);
+}
+
+.voiceActionIcon {
+  align-items: center;
+  background: var(--soy);
+  border-radius: 999px;
+  color: var(--bg-raised);
+  display: inline-flex;
+  font-size: 0.75rem;
+  height: 3.5rem;
+  justify-content: center;
+  width: 3.5rem;
+}
+
+.voiceAction[data-listening="true"] .voiceActionIcon {
+  background: var(--risk);
+}
+
+.voiceAction strong { font-size: 1.05rem; }
+.voiceAction small { color: var(--ink-dim); }
+
+.spokenSummary {
+  background: color-mix(in srgb, var(--corn) 8%, var(--bg-raised));
+  border-left: 3px solid var(--corn);
+  padding: 0.75rem 0.85rem;
+}
+
+.spokenSummary span {
+  color: var(--corn-dim);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.spokenSummary p {
+  color: var(--ink);
+  line-height: 1.5;
+  margin: 0.35rem 0 0;
+}
 
 .fieldChoices { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.55rem; }
 
@@ -166,4 +244,9 @@
   .access { padding: 1.1rem; }
   .savedContext { align-items: flex-start; flex-direction: column; gap: 0.5rem; }
   .fieldChoices { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voiceAction { transition: none; }
+  .voiceAction:hover { transform: none; }
 }

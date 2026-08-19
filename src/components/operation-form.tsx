@@ -10,6 +10,7 @@ import {
   type FarmOperationInput,
   type HistoricalDataset,
   type Municipality,
+  type OperationDraft,
   type PlanResult,
   type ReplanResult,
 } from "@/domain/schemas";
@@ -17,10 +18,10 @@ import { buildPlanWhatsAppMessage, buildReplanWhatsAppMessage, buildWhatsAppShar
 import { sorrisoMt, sorrisoMt41Seasons } from "../../data/fixtures/municipalities/sorriso-mt";
 import { PlanAccess } from "./plan-access";
 import { SeasonStrip } from "./season-strip";
-import { TerritoryEditor } from "./territory/territory-editor";
+import { TerritoryEditor, type TerritorySearchResult } from "./territory/territory-editor";
 import { connectRealtimeVoiceSession, type RealtimeVoiceController } from "@/lib/realtime-client";
 
-type ClimateStatus = "fixture" | "loading" | "live" | "error";
+type ClimateStatus = "fixture" | "unresolved" | "loading" | "live" | "error";
 type InputMode = "voice" | "text" | "form";
 type JourneyStage = "report" | "territory" | "complete" | "review" | "confirm" | "plan";
 
@@ -79,7 +80,8 @@ export function OperationForm() {
   const voiceControllerRef = useRef<RealtimeVoiceController | null>(null);
   const [inputMode, setInputMode] = useState<InputMode>("voice");
   const [voiceStatus, setVoiceStatus] = useState<"idle" | "connecting" | "listening" | "error">("idle");
-  const [naturalBrief, setNaturalBrief] = useState(PREPARED_BRIEF);
+  const [naturalBrief, setNaturalBrief] = useState("");
+  const [briefStatus, setBriefStatus] = useState<"idle" | "parsing">("idle");
   const [journeyStage, setJourneyStage] = useState<JourneyStage>("report");
   const [draftSource, setDraftSource] = useState<InputMode>("voice");
   const [municipalityQuery, setMunicipalityQuery] = useState("Sorriso");
@@ -95,6 +97,8 @@ export function OperationForm() {
   const [soybeanMarginPerHa, setSoybeanMarginPerHa] = useState(1850);
   const [cornMarginPerHa, setCornMarginPerHa] = useState(1200);
   const [operatingCostPerDay, setOperatingCostPerDay] = useState<number | "">("");
+  const [fields, setFields] = useState<FarmOperationInput["fields"]>(FIELDS);
+  const [seedLots, setSeedLots] = useState<FarmOperationInput["seedLots"]>(SEED_LOTS);
 
   const [plan, setPlan] = useState<PlanResult | null>(null);
   const [lastInput, setLastInput] = useState<FarmOperationInput | null>(null);
@@ -102,6 +106,103 @@ export function OperationForm() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => () => voiceControllerRef.current?.close(), []);
+
+  function applyOperationDraft(draft: OperationDraft) {
+    invalidateConfirmation();
+
+    if (draft.municipalityQuery?.name) {
+      const query = [draft.municipalityQuery.name, draft.municipalityQuery.state].filter(Boolean).join(", ");
+      setMunicipalityQuery(query);
+      setClimateStatus("unresolved");
+    }
+    if (draft.totalAreaHa !== undefined) setTotalAreaHa(draft.totalAreaHa);
+    if (draft.planterCapacityHaPerDay !== undefined) {
+      setPlanterCount(1);
+      setPlanterCapacityHaPerDay(draft.planterCapacityHaPerDay);
+    }
+    if (draft.startDate !== undefined) setStartDate(draft.startDate);
+    if (draft.secondCropTargetAreaHa !== undefined) setSecondCropTargetAreaHa(draft.secondCropTargetAreaHa);
+    if (draft.finance?.soybeanMarginPerHa !== undefined) setSoybeanMarginPerHa(draft.finance.soybeanMarginPerHa);
+    if (draft.finance?.cornMarginPerHa !== undefined) setCornMarginPerHa(draft.finance.cornMarginPerHa);
+    if (draft.finance?.operatingCostPerDay !== undefined) setOperatingCostPerDay(draft.finance.operatingCostPerDay);
+
+    const parsedFields = draft.fields.flatMap((field) =>
+      field.areaHa === undefined
+        ? []
+        : [{
+            id: field.id,
+            areaHa: field.areaHa,
+            priority: field.secondCropEligible === true ? "second_crop" as const : "soy_only" as const,
+          }],
+    );
+    if (parsedFields.length > 0) setFields(parsedFields);
+
+    const parsedSeedLots = draft.seedLots.flatMap((seed) =>
+      seed.crop !== "soybean" || seed.cycleDays === undefined || seed.availableAreaHa === undefined
+        ? []
+        : [{
+            id: seed.id,
+            crop: "soybean" as const,
+            cycleDays: seed.cycleDays,
+            availableAreaHa: seed.availableAreaHa,
+          }],
+    );
+    if (parsedSeedLots.length > 0) setSeedLots(parsedSeedLots);
+  }
+
+  function applyConfirmedOperation(operation: FarmOperationInput) {
+    invalidateConfirmation();
+    setMunicipality(operation.municipality);
+    setMunicipalityQuery(`${operation.municipality.name}, ${operation.municipality.state}`);
+    setTotalAreaHa(operation.totalAreaHa);
+    setPlanterCount(1);
+    setPlanterCapacityHaPerDay(operation.planterCapacityHaPerDay);
+    setStartDate(operation.startDate);
+    setSecondCropTargetAreaHa(operation.secondCropTargetAreaHa);
+    setFields(operation.fields);
+    setSeedLots(operation.seedLots);
+    setSoybeanMarginPerHa(operation.finance.soybeanMarginPerHa);
+    setCornMarginPerHa(operation.finance.cornMarginPerHa);
+    setOperatingCostPerDay(operation.finance.operatingCostPerDay ?? "");
+    setClimateStatus("unresolved");
+  }
+
+  async function resolveAndLoadClimate(query: string): Promise<boolean> {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      setClimateStatus("unresolved");
+      setError("Informe o município e o estado para continuar.");
+      return false;
+    }
+
+    invalidateConfirmation();
+    setClimateStatus("loading");
+    setError(null);
+    try {
+      const locRes = await fetch(`/api/locations?q=${encodeURIComponent(trimmedQuery)}`);
+      const locBody = await locRes.json();
+      if (!locRes.ok || !locBody.municipality) throw new Error("location unavailable");
+      const resolved: Municipality = locBody.municipality;
+
+      const climateRes = await fetch("/api/climate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ municipality: resolved }),
+      });
+      const climateBody = await climateRes.json();
+      if (!climateRes.ok || !climateBody.dataset) throw new Error("climate unavailable");
+
+      setMunicipality(resolved);
+      setMunicipalityQuery(`${resolved.name}, ${resolved.state}`);
+      setDataset(climateBody.dataset);
+      setClimateStatus("live");
+      return true;
+    } catch {
+      setClimateStatus("error");
+      setError("Não conseguimos confirmar esse município agora. Confira o nome e tente novamente.");
+      return false;
+    }
+  }
 
   async function toggleVoice() {
     if (voiceControllerRef.current) {
@@ -117,8 +218,12 @@ export function OperationForm() {
     setError(null);
     try {
       const controller = await connectRealtimeVoiceSession(crypto.randomUUID(), {
-        updateOperationDraft: ({ draft }) => {
-          setNaturalBrief(JSON.stringify(draft));
+        updateOperationDraft: async ({ draft }) => {
+          applyOperationDraft(draft);
+          if (draft.municipalityQuery?.name) {
+            const query = [draft.municipalityQuery.name, draft.municipalityQuery.state].filter(Boolean).join(", ");
+            await resolveAndLoadClimate(query);
+          }
           return { ok: true, message: "Rascunho atualizado. Continue a conversa e confirme os dados com o produtor." };
         },
         requestOperationConfirmation: ({ draftVersion }) => ({
@@ -127,8 +232,18 @@ export function OperationForm() {
           confirmationToken: `voice-${draftVersion}`,
           message: "Leia o resumo e peça uma confirmação explícita." ,
         }),
-        confirmOperationAndCalculate: ({ affirmative }) => {
-          if (affirmative) beginCompletion("voice");
+        confirmOperationAndCalculate: async ({ affirmative, operation }) => {
+          if (affirmative) {
+            applyConfirmedOperation(operation);
+            await resolveAndLoadClimate(`${operation.municipality.name}, ${operation.municipality.state}`);
+            window.setTimeout(() => {
+              voiceControllerRef.current?.stopPushToTalk();
+              voiceControllerRef.current?.close();
+              voiceControllerRef.current = null;
+              setVoiceStatus("idle");
+              beginCompletion("voice");
+            }, 0);
+          }
           return { ok: affirmative, message: affirmative ? "Confirmação registrada. A interface avançou para a localização." : "Confirmação negada." };
         },
         updateFieldEventDraft: () => ({ ok: true }),
@@ -158,30 +273,43 @@ export function OperationForm() {
   }
 
   async function handleLoadClimate() {
-    invalidateConfirmation();
-    setClimateStatus("loading");
-    try {
-      const locRes = await fetch(`/api/locations?q=${encodeURIComponent(municipalityQuery)}`);
-      const locBody = await locRes.json();
-      if (!locRes.ok) throw new Error(locBody.error ?? "geocodificação falhou");
-      const resolved: Municipality = locBody.municipality;
+    await resolveAndLoadClimate(municipalityQuery);
+  }
 
-      const climateRes = await fetch("/api/climate", {
+  async function handleTextBrief() {
+    if (!naturalBrief.trim()) {
+      setError("Conte um pouco sobre o plantio antes de continuar.");
+      return;
+    }
+
+    setBriefStatus("parsing");
+    setError(null);
+    try {
+      const response = await fetch("/api/parse-brief", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ municipality: resolved }),
+        body: JSON.stringify({ text: naturalBrief }),
       });
-      const climateBody = await climateRes.json();
-      if (!climateRes.ok) throw new Error(climateBody.error ?? "busca de clima falhou");
-
-      setMunicipality(resolved);
-      setDataset(climateBody.dataset);
-      setClimateStatus("live");
+      const body = await response.json();
+      if (!response.ok || !body.draft) throw new Error("brief unavailable");
+      const draft = body.draft as OperationDraft;
+      applyOperationDraft(draft);
+      if (draft.municipalityQuery?.name) {
+        const query = [draft.municipalityQuery.name, draft.municipalityQuery.state].filter(Boolean).join(", ");
+        await resolveAndLoadClimate(query);
+      }
+      setDraftSource("text");
+      setJourneyStage("territory");
     } catch {
-      setMunicipality(sorrisoMt);
-      setDataset(sorrisoMt41Seasons);
-      setClimateStatus("error");
+      setError("Não conseguimos organizar seu relato agora. Você pode tentar novamente ou preencher passo a passo.");
+    } finally {
+      setBriefStatus("idle");
     }
+  }
+
+  async function handleTerritoryPlaceSelected(result: TerritorySearchResult) {
+    setMunicipalityQuery(result.name);
+    await resolveAndLoadClimate(result.name);
   }
 
   function operationInput(): FarmOperationInput {
@@ -194,8 +322,8 @@ export function OperationForm() {
       startDate,
       firstCrop: "soybean",
       secondCrop: "corn",
-      fields: FIELDS,
-      seedLots: SEED_LOTS,
+      fields,
+      seedLots,
       secondCropTargetAreaHa,
       finance: {
         soybeanMarginPerHa,
@@ -206,6 +334,10 @@ export function OperationForm() {
   }
 
   function handleReviewDraft(source: InputMode) {
+    if (climateStatus === "loading" || climateStatus === "unresolved" || climateStatus === "error") {
+      setError("Confirme o município e carregue o clima antes de continuar.");
+      return;
+    }
     const input = operationInput();
 
     const parsed = FarmOperationInputSchema.safeParse(input);
@@ -334,11 +466,12 @@ export function OperationForm() {
                       invalidateConfirmation();
                     }}
                     rows={4}
+                    placeholder={PREPARED_BRIEF}
                   />
                   <div className={styles.journeyActions}>
                     <span>Vamos organizar o que você escreveu na próxima etapa.</span>
-                    <button type="button" className={styles.ctaPrimary} onClick={() => beginCompletion("text")}>
-                      Continuar →
+                    <button type="button" className={styles.ctaPrimary} onClick={handleTextBrief} disabled={briefStatus === "parsing"}>
+                      {briefStatus === "parsing" ? "Organizando…" : "Continuar →"}
                     </button>
                   </div>
                 </div>
@@ -356,7 +489,13 @@ export function OperationForm() {
               </div>
               <span className={styles.stepBadge}>mapa editável</span>
             </div>
-            <TerritoryEditor embedded onContinue={() => setJourneyStage("complete")} />
+            <TerritoryEditor
+              embedded
+              initialSearch={municipalityQuery}
+              initialLocation={{ latitude: municipality.latitude, longitude: municipality.longitude }}
+              onLocationSelected={handleTerritoryPlaceSelected}
+              onContinue={() => setJourneyStage("complete")}
+            />
             <div className={styles.journeyActions}>
               <button type="button" className={styles.ctaSecondary} onClick={goBack}>Voltar</button>
               <button type="button" className={styles.submit} onClick={() => setJourneyStage("complete")}>Continuar com esta localização →</button>
@@ -391,6 +530,7 @@ export function OperationForm() {
                         value={municipalityQuery}
                         onChange={(e) => {
                           setMunicipalityQuery(e.target.value);
+                          setClimateStatus("unresolved");
                           invalidateConfirmation();
                         }}
                         placeholder="Ex.: Sorriso, Rondonópolis, Sinop"
@@ -403,8 +543,9 @@ export function OperationForm() {
                       {climateStatus === "live" &&
                         `${municipality.name}/${municipality.state} · fonte: ${dataset.source} · ${dataset.cached ? "dados já guardados" : "consulta agora"}`}
                       {climateStatus === "fixture" && `${municipality.name}/${municipality.state} · dados de exemplo guardados neste aparelho`}
+                      {climateStatus === "unresolved" && "Confirme o município em “Ver clima” antes de continuar."}
                       {climateStatus === "loading" && "Buscando informações de clima da região…"}
-                      {climateStatus === "error" && <span className={detailsStyles.riskNote}>Não foi possível buscar o clima agora. Vamos usar dados de exemplo de {sorrisoMt.name}/{sorrisoMt.state}.</span>}
+                      {climateStatus === "error" && <span className={detailsStyles.riskNote}>Não conseguimos confirmar esse município. Confira o nome e tente novamente.</span>}
                     </span>
                   </div>
                   <div className={styles.field}>
@@ -512,7 +653,7 @@ export function OperationForm() {
                   </div>
                 </div>
                 <ul className={detailsStyles.itemList} aria-label="Talhões informados">
-                  {FIELDS.map((field) => (
+                  {fields.map((field) => (
                     <li key={field.id} className={detailsStyles.itemCard}>
                       <div>
                         <strong>{field.id}</strong>
@@ -535,7 +676,7 @@ export function OperationForm() {
                   </div>
                 </div>
                 <ul className={detailsStyles.itemList} aria-label="Sementes informadas">
-                  {SEED_LOTS.map((seed) => (
+                  {seedLots.map((seed) => (
                     <li key={seed.cycleDays} className={detailsStyles.itemCard}>
                       <div>
                         <strong>Soja de {seed.cycleDays} dias</strong>
@@ -605,7 +746,9 @@ export function OperationForm() {
           Cálculo feito pelas mesmas regras, sem chute ·{" "}
           {climateStatus === "live"
             ? `clima buscado agora em ${municipality.name}/${municipality.state}`
-            : `dados de exemplo de ${municipality.name}/${municipality.state}`}
+            : climateStatus === "fixture"
+              ? `dados de exemplo de ${municipality.name}/${municipality.state}`
+              : "município ainda não confirmado"}
         </span>
       </div>
 
@@ -682,10 +825,10 @@ export function OperationForm() {
           <div>
             <p className={styles.tableLabel}>Localização, talhões e clima</p>
             <p className={styles.modeHint} style={{ marginBottom: "0.75rem" }}>O mapa continua editável para apoiar a decisão e uma nova análise.</p>
-            <TerritoryEditor embedded />
+            <TerritoryEditor embedded initialSearch={municipalityQuery} initialLocation={{ latitude: municipality.latitude, longitude: municipality.longitude }} />
           </div>
           <SeasonStrip
-            totalAreaHa={FIELDS.filter((f) => f.priority === "second_crop").reduce((s, f) => s + f.areaHa, 0)}
+            totalAreaHa={fields.filter((f) => f.priority === "second_crop").reduce((s, f) => s + f.areaHa, 0)}
             seasons={plan.historicalOutcomes.map((o) => ({ label: o.season, areaHa: o.secondCropViableAreaHa }))}
             eyebrow="Como este plano se saiu"
             heading={`Veja o resultado nas 41 safras de ${municipality.name}/${municipality.state}.`}
