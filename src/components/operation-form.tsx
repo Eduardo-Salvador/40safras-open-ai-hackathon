@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import styles from "@/app/page.module.css";
+import detailsStyles from "./operation-details.module.css";
 import stripStyles from "./season-strip.module.css";
 import { buildPlan } from "@/domain/planner";
-import { buildReplan } from "@/domain/replan";
 import {
   FarmOperationInputSchema,
   type FarmOperationInput,
-  type FieldEvent,
   type HistoricalDataset,
   type Municipality,
   type PlanResult,
@@ -16,11 +15,43 @@ import {
 } from "@/domain/schemas";
 import { buildPlanWhatsAppMessage, buildReplanWhatsAppMessage, buildWhatsAppShareUrl } from "@/lib/whatsapp";
 import { sorrisoMt, sorrisoMt41Seasons } from "../../data/fixtures/municipalities/sorriso-mt";
+import { PlanAccess } from "./plan-access";
 import { SeasonStrip } from "./season-strip";
 
 type ClimateStatus = "fixture" | "loading" | "live" | "error";
 type InputMode = "voice" | "text" | "form";
-type DraftStage = "editing" | "review" | "confirmed";
+type JourneyStage = "report" | "complete" | "review" | "confirm" | "plan";
+
+const JOURNEY_STEPS: Array<{ id: JourneyStage; label: string }> = [
+  { id: "report", label: "Contar" },
+  { id: "complete", label: "Completar" },
+  { id: "review", label: "Conferir" },
+  { id: "confirm", label: "Confirmar" },
+  { id: "plan", label: "Plano" },
+];
+
+const INPUT_SOURCE_LABEL: Record<InputMode, string> = {
+  voice: "falado",
+  text: "digitado",
+  form: "preenchido por você",
+};
+
+const PLAN_NOTES = [
+  "A data de fim das chuvas é uma referência deste protótipo. Confirme a decisão com orientação técnica da sua região.",
+  "Para os talhões de segunda safra, o cálculo usa a soja de ciclo mais curto que está disponível.",
+  "O tempo do milho usado aqui é uma referência geral e pode não ser o do seu tipo de semente.",
+  "Os valores em dinheiro usam somente as margens e custos informados. Eles não garantem lucro.",
+];
+
+function friendlyChangeName(name: string) {
+  const names: Record<string, string> = {
+    "safras viáveis (de 41)": "Safras em que o plano funcionou (de 41)",
+    "área segunda safra, P20 (ha)": "Área de milho no cenário mais cauteloso",
+    "resultado financeiro, P20 (R$)": "Valor em dinheiro no cenário mais cauteloso",
+  };
+
+  return names[name] ?? name;
+}
 
 const PREPARED_BRIEF =
   "Sorriso, Mato Grosso. Começar em 15 de setembro. São 850 hectares em três talhões, plantadeira de 45 hectares por dia e meta de 580 hectares de milho segunda safra.";
@@ -42,17 +73,17 @@ const SEED_LOTS: FarmOperationInput["seedLots"] = [
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 export function OperationForm() {
-  const [inputMode, setInputMode] = useState<InputMode>("form");
+  const [inputMode, setInputMode] = useState<InputMode>("voice");
   const [naturalBrief, setNaturalBrief] = useState(PREPARED_BRIEF);
-  const [draftStage, setDraftStage] = useState<DraftStage>("editing");
-  const [draftSource, setDraftSource] = useState<InputMode>("form");
+  const [journeyStage, setJourneyStage] = useState<JourneyStage>("report");
+  const [draftSource, setDraftSource] = useState<InputMode>("voice");
   const [municipalityQuery, setMunicipalityQuery] = useState("Sorriso");
   const [municipality, setMunicipality] = useState<Municipality>(sorrisoMt);
   const [dataset, setDataset] = useState<HistoricalDataset>(sorrisoMt41Seasons);
   const [climateStatus, setClimateStatus] = useState<ClimateStatus>("fixture");
-  const [climateNote, setClimateNote] = useState<string | null>(null);
 
   const [totalAreaHa, setTotalAreaHa] = useState(850);
+  const [planterCount, setPlanterCount] = useState(1);
   const [planterCapacityHaPerDay, setPlanterCapacityHaPerDay] = useState(45);
   const [startDate, setStartDate] = useState("2025-09-15");
   const [secondCropTargetAreaHa, setSecondCropTargetAreaHa] = useState(580);
@@ -66,16 +97,21 @@ export function OperationForm() {
   const [error, setError] = useState<string | null>(null);
 
   function invalidateConfirmation() {
-    setDraftStage("editing");
     setLastInput(null);
     setPlan(null);
     setReplan(null);
   }
 
+  function beginCompletion(source: InputMode) {
+    setDraftSource(source);
+    setError(null);
+    invalidateConfirmation();
+    setJourneyStage("complete");
+  }
+
   async function handleLoadClimate() {
     invalidateConfirmation();
     setClimateStatus("loading");
-    setClimateNote(null);
     try {
       const locRes = await fetch(`/api/locations?q=${encodeURIComponent(municipalityQuery)}`);
       const locBody = await locRes.json();
@@ -93,11 +129,10 @@ export function OperationForm() {
       setMunicipality(resolved);
       setDataset(climateBody.dataset);
       setClimateStatus("live");
-    } catch (err) {
+    } catch {
       setMunicipality(sorrisoMt);
       setDataset(sorrisoMt41Seasons);
       setClimateStatus("error");
-      setClimateNote(err instanceof Error ? err.message : "falha desconhecida ao buscar clima ao vivo");
     }
   }
 
@@ -105,7 +140,9 @@ export function OperationForm() {
     return {
       municipality,
       totalAreaHa,
-      planterCapacityHaPerDay,
+      // The planner contract receives the operation's total daily capacity.
+      // The interface keeps the more familiar machine count + output per machine.
+      planterCapacityHaPerDay: planterCount * planterCapacityHaPerDay,
       startDate,
       firstCrop: "soybean",
       secondCrop: "corn",
@@ -126,362 +163,474 @@ export function OperationForm() {
     const parsed = FarmOperationInputSchema.safeParse(input);
     if (!parsed.success) {
       setPlan(null);
-      setError(parsed.error.issues.map((i) => i.message).join("; "));
+      setError("Confira se todos os campos têm um número válido antes de continuar.");
       return;
     }
 
     setError(null);
     setLastInput(parsed.data);
     setDraftSource(source);
-    setDraftStage("review");
     setPlan(null);
     setReplan(null);
+    setJourneyStage("review");
   }
 
   function handleConfirmAndCalculate() {
     if (!lastInput) return;
     setPlan(buildPlan(lastInput, dataset));
-    setDraftStage("confirmed");
+    setReplan(null);
+    setJourneyStage("plan");
   }
 
-  const FIELD_EVENT: FieldEvent = {
-    effectiveDate: startDate,
-    blockedFieldIds: ["T-01"],
-    seedDeltaAreaHaByCycle: {},
-    notes: ["chuva forte alagou o talhão T-01"],
-  };
+  const currentStepIndex = JOURNEY_STEPS.findIndex((step) => step.id === journeyStage);
 
-  function handleApplyEvent() {
-    if (!lastInput) return;
-    setReplan(buildReplan(lastInput, dataset, FIELD_EVENT));
+  function goBack() {
+    const previousStep = JOURNEY_STEPS[currentStepIndex - 1];
+    if (previousStep) setJourneyStage(previousStep.id);
   }
 
   return (
     <div className={styles.ledger}>
       <div className={styles.modeHeader}>
         <div>
-          <p className={styles.tableLabel}>Como você quer informar a operação?</p>
-          <p className={styles.modeHint}>Os três caminhos geram o mesmo rascunho para revisão.</p>
+          <p className={styles.tableLabel}>Seu plantio</p>
+          <p className={styles.modeHint}>Vamos por partes. O que você informou continua aqui enquanto avança.</p>
         </div>
-        <span className={styles.stepBadge}>1 · entrada</span>
-      </div>
-
-      <div className={styles.modeTabs} role="tablist" aria-label="Modo de entrada da operação">
-        {([
-          ["voice", "Voz", "push-to-talk"],
-          ["text", "Texto", "relato natural"],
-          ["form", "Formulário", "campos diretos"],
-        ] as const).map(([mode, label, detail]) => (
-          <button
-            key={mode}
-            type="button"
-            role="tab"
-            aria-selected={inputMode === mode}
-            className={styles.modeTab}
-            onClick={() => setInputMode(mode)}
-          >
-            <strong>{label}</strong>
-            <span>{detail}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className={styles.modePanel} role="tabpanel" aria-live="polite">
-        {inputMode === "voice" && (
-          <div className={styles.voicePanel}>
-            <span className={styles.voiceIcon} aria-hidden="true">●</span>
-            <div>
-              <h3>Voz preparada para a integração A1</h3>
-              <p>
-                Este frontend não abre o microfone ainda. O botão abaixo usa um relato
-                preparado e deixa explícito o rascunho que será confirmado.
-              </p>
-            </div>
-            <button type="button" className={styles.ctaPrimary} onClick={() => handleReviewDraft("voice")}>
-              Usar relato de voz preparado
-            </button>
-          </div>
-        )}
-
-        {inputMode === "text" && (
-          <div className={styles.textPanel}>
-            <label htmlFor="natural-brief">Descreva a operação em português</label>
-            <textarea
-              id="natural-brief"
-              value={naturalBrief}
-              onChange={(event) => {
-                setNaturalBrief(event.target.value);
-                invalidateConfirmation();
-              }}
-              rows={4}
-            />
-            <div className={styles.modeActionRow}>
-              <span>Interpretação preparada neste estágio; a API de IA entra em A1.</span>
-              <button type="button" className={styles.ctaPrimary} onClick={() => handleReviewDraft("text")}>
-                Gerar rascunho preparado
-              </button>
-            </div>
-          </div>
-        )}
-
-        {inputMode === "form" && (
-          <p className={styles.formModeNote}>
-            Edite os campos estruturados abaixo. Qualquer alteração invalida uma confirmação anterior.
-          </p>
-        )}
-      </div>
-
-      <div className={styles.ledgerRow}>
-        <div className={styles.field}>
-          <label htmlFor="municipality">Município</label>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input
-              id="municipality"
-              value={municipalityQuery}
-              onChange={(e) => {
-                setMunicipalityQuery(e.target.value);
-                invalidateConfirmation();
-              }}
-              placeholder="ex: Sorriso, Rondonópolis, Sinop"
-            />
-            <button
-              type="button"
-              onClick={handleLoadClimate}
-              disabled={climateStatus === "loading"}
-              className={styles.ctaSecondary}
-              style={{ padding: "0.6rem 0.9rem", fontSize: "0.85rem", whiteSpace: "nowrap" }}
-            >
-              {climateStatus === "loading" ? "Buscando…" : "Buscar clima"}
-            </button>
-          </div>
-          <span className={styles.submitNote} style={{ marginTop: "0.35rem" }}>
-            {climateStatus === "live" &&
-              `${municipality.name}/${municipality.state} · ${dataset.source} · ${dataset.cached ? "cache" : "ao vivo"}`}
-            {climateStatus === "fixture" && `${municipality.name}/${municipality.state} · fixture offline (dados ilustrativos)`}
-            {climateStatus === "loading" && "consultando Open-Meteo + IBGE…"}
-            {climateStatus === "error" && (
-              <span style={{ color: "var(--risk)" }}>
-                {climateNote} — usando fixture de {sorrisoMt.name}/{sorrisoMt.state}
-              </span>
-            )}
-          </span>
-        </div>
-        <div className={styles.field}>
-          <label htmlFor="start-date">Data de início</label>
-          <input
-            id="start-date"
-            type="date"
-            value={startDate}
-            onChange={(e) => {
-              setStartDate(e.target.value);
-              invalidateConfirmation();
-            }}
-          />
-        </div>
-        <div className={styles.field}>
-          <label htmlFor="target-area">Meta de área segunda safra (ha)</label>
-          <input
-            id="target-area"
-            type="number"
-            value={secondCropTargetAreaHa}
-            onChange={(e) => {
-              setSecondCropTargetAreaHa(Number(e.target.value));
-              invalidateConfirmation();
-            }}
-          />
-        </div>
-      </div>
-
-      <div className={styles.ledgerRow}>
-        <div className={styles.field}>
-          <label htmlFor="total-area">Área total (ha)</label>
-          <input
-            id="total-area"
-            type="number"
-            value={totalAreaHa}
-            onChange={(e) => {
-              setTotalAreaHa(Number(e.target.value));
-              invalidateConfirmation();
-            }}
-          />
-        </div>
-        <div className={styles.field}>
-          <label htmlFor="planter">Capacidade da plantadeira (ha/dia)</label>
-          <input
-            id="planter"
-            type="number"
-            value={planterCapacityHaPerDay}
-            onChange={(e) => {
-              setPlanterCapacityHaPerDay(Number(e.target.value));
-              invalidateConfirmation();
-            }}
-          />
-        </div>
-      </div>
-
-      <div className={styles.tableWrap}>
-        <p className={styles.tableLabel}>Talhões (fixo neste protótipo)</p>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Talhão</th>
-              <th>Área (ha)</th>
-              <th>Prioridade</th>
-            </tr>
-          </thead>
-          <tbody>
-            {FIELDS.map((f) => (
-              <tr key={f.id}>
-                <td>{f.id}</td>
-                <td>{f.areaHa} ha</td>
-                <td>
-                  <span className={styles.priorityPill} data-priority={f.priority}>
-                    {f.priority === "second_crop" ? "segunda safra" : "só soja"}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className={styles.tableWrap}>
-        <p className={styles.tableLabel}>Lotes de semente (fixo neste protótipo)</p>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Cultivar</th>
-              <th>Ciclo (dias)</th>
-              <th>Área disponível</th>
-            </tr>
-          </thead>
-          <tbody>
-            {SEED_LOTS.map((s) => (
-              <tr key={s.cycleDays}>
-                <td>Soja {s.cycleDays}d</td>
-                <td>{s.cycleDays} dias</td>
-                <td>{s.availableAreaHa} ha</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className={styles.ledgerRow}>
-        <div className={styles.field}>
-          <label htmlFor="soy-margin">Margem soja (R$/ha)</label>
-          <input
-            id="soy-margin"
-            type="number"
-            value={soybeanMarginPerHa}
-            onChange={(e) => {
-              setSoybeanMarginPerHa(Number(e.target.value));
-              invalidateConfirmation();
-            }}
-          />
-        </div>
-        <div className={styles.field}>
-          <label htmlFor="corn-margin">Margem milho (R$/ha)</label>
-          <input
-            id="corn-margin"
-            type="number"
-            value={cornMarginPerHa}
-            onChange={(e) => {
-              setCornMarginPerHa(Number(e.target.value));
-              invalidateConfirmation();
-            }}
-          />
-        </div>
-        <div className={styles.field}>
-          <label htmlFor="op-cost">Custo operacional (R$/dia, opcional)</label>
-          <input
-            id="op-cost"
-            type="number"
-            placeholder="—"
-            value={operatingCostPerDay}
-            onChange={(e) => {
-              setOperatingCostPerDay(e.target.value === "" ? "" : Number(e.target.value));
-              invalidateConfirmation();
-            }}
-          />
-        </div>
-      </div>
-
-      <div className={styles.ledgerFooter}>
-        <button className={styles.submit} type="button" onClick={() => handleReviewDraft("form")}>
-          Revisar dados →
-        </button>
-        <span className={styles.submitNote}>
-          motor determinístico local ·{" "}
-          {climateStatus === "live"
-            ? `clima ao vivo de ${municipality.name}/${municipality.state}`
-            : `fixture climática de ${municipality.name}/${municipality.state}`}
+        <span className={styles.stepBadge}>
+          {currentStepIndex + 1} de {JOURNEY_STEPS.length}
         </span>
       </div>
 
-      {lastInput && draftStage !== "editing" && (
-        <section className={styles.confirmationPanel} aria-labelledby="confirmation-title">
-          <div className={styles.confirmationHead}>
-            <div>
-              <p className={styles.tableLabel}>Rascunho estruturado · origem: {draftSource}</p>
-              <h3 id="confirmation-title">
-                {draftStage === "confirmed" ? "Dados confirmados" : "Confira antes de calcular"}
-              </h3>
+      <ol className={styles.journeyProgress} aria-label="Etapas da jornada">
+        {JOURNEY_STEPS.map((step, index) => (
+          <li
+            key={step.id}
+            className={styles.journeyStep}
+            data-status={index < currentStepIndex ? "complete" : index === currentStepIndex ? "current" : "upcoming"}
+            aria-current={index === currentStepIndex ? "step" : undefined}
+          >
+            <span aria-hidden="true">{index + 1}</span>
+            <span>{step.label}</span>
+          </li>
+        ))}
+      </ol>
+
+      <section className={styles.journeyStage} aria-live="polite">
+        {journeyStage === "report" && (
+          <>
+            {inputMode !== "voice" && (
+              <div className={styles.typingChooser} role="group" aria-label="Como você quer informar os dados">
+                <button
+                  type="button"
+                  aria-pressed={inputMode === "text"}
+                  className={styles.typingChoice}
+                  onClick={() => setInputMode("text")}
+                >
+                  Digitar do meu jeito
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={inputMode === "form"}
+                  className={styles.typingChoice}
+                  onClick={() => beginCompletion("form")}
+                >
+                  Preencher passo a passo
+                </button>
+                <button type="button" className={styles.backToVoice} onClick={() => setInputMode("voice")}>
+                  Voltar para falar
+                </button>
+              </div>
+            )}
+
+            <div className={styles.modePanel} role="tabpanel">
+              {inputMode === "voice" && (
+                <div>
+                  <div className={styles.voicePanel}>
+                    <div className={styles.voiceContext}>
+                      <p className={styles.voiceContextIntro}>Pode contar do seu jeito. Se souber, fale sobre:</p>
+                      <ul className={styles.voiceContextList}>
+                        <li>município e UF;</li>
+                        <li>área total e talhões;</li>
+                        <li>quando quer começar e quanto planta por dia;</li>
+                        <li>sementes, tempo de ciclo e meta de milho.</li>
+                      </ul>
+                    </div>
+                    <button type="button" className={styles.voiceButton} onClick={() => beginCompletion("voice")}>
+                      <span className={styles.voiceIcon} aria-hidden="true">
+                        <svg className={styles.microphoneIcon} viewBox="0 0 24 24" fill="none" focusable="false" aria-hidden="true">
+                          <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" stroke="currentColor" strokeWidth="1.8" />
+                          <path d="M18 11a6 6 0 0 1-12 0M12 17v4M8 21h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                        </svg>
+                      </span>
+                      <strong>Toque para falar</strong>
+                      <small>Fale como se estivesse explicando para alguém da sua equipe</small>
+                    </button>
+                    <p className={styles.voicePreparedNote}>
+                      Por enquanto, este botão usa um exemplo de fala. Em breve ele vai ouvir seu relato.
+                    </p>
+                  </div>
+                  <button type="button" className={styles.typeInvite} onClick={() => setInputMode("text")}>
+                    Prefere digitar? <strong>Clique aqui</strong>
+                  </button>
+                </div>
+              )}
+
+              {inputMode === "text" && (
+                <div className={styles.textPanel}>
+                  <label htmlFor="natural-brief">Conte sobre o seu plantio</label>
+                  <textarea
+                    id="natural-brief"
+                    value={naturalBrief}
+                    onChange={(event) => {
+                      setNaturalBrief(event.target.value);
+                      invalidateConfirmation();
+                    }}
+                    rows={4}
+                  />
+                  <div className={styles.journeyActions}>
+                    <span>Vamos organizar o que você escreveu na próxima etapa.</span>
+                    <button type="button" className={styles.ctaPrimary} onClick={() => beginCompletion("text")}>
+                      Continuar →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            <span className={styles.stepBadge}>2 · confirmação</span>
+          </>
+        )}
+
+        {journeyStage === "complete" && (
+          <>
+            <div className={styles.modeHeader}>
+              <div>
+                <p className={styles.tableLabel}>Faltam alguns dados</p>
+                <p className={styles.modeHint}>Preencha só o que precisamos para montar seu plano.</p>
+              </div>
+              <span className={styles.stepBadge}>informado: {INPUT_SOURCE_LABEL[draftSource]}</span>
+            </div>
+            <div className={detailsStyles.formSections}>
+              <section className={detailsStyles.formSection} aria-labelledby="place-and-date-title">
+                <div className={detailsStyles.sectionHeading}>
+                  <span aria-hidden="true">1</span>
+                  <div>
+                    <h3 id="place-and-date-title">Onde e quando começa</h3>
+                    <p>Primeiro, confirme o município e a data em que pretende iniciar.</p>
+                  </div>
+                </div>
+                <div className={detailsStyles.fieldGrid}>
+                  <div className={styles.field}>
+                    <label htmlFor="municipality">Município</label>
+                    <div className={detailsStyles.municipalityInput}>
+                      <input
+                        id="municipality"
+                        value={municipalityQuery}
+                        onChange={(e) => {
+                          setMunicipalityQuery(e.target.value);
+                          invalidateConfirmation();
+                        }}
+                        placeholder="Ex.: Sorriso, Rondonópolis, Sinop"
+                      />
+                      <button type="button" onClick={handleLoadClimate} disabled={climateStatus === "loading"} className={styles.ctaSecondary}>
+                        {climateStatus === "loading" ? "Procurando…" : "Ver clima"}
+                      </button>
+                    </div>
+                    <span className={styles.submitNote}>
+                      {climateStatus === "live" &&
+                        `${municipality.name}/${municipality.state} · fonte: ${dataset.source} · ${dataset.cached ? "dados já guardados" : "consulta agora"}`}
+                      {climateStatus === "fixture" && `${municipality.name}/${municipality.state} · dados de exemplo guardados neste aparelho`}
+                      {climateStatus === "loading" && "Buscando informações de clima da região…"}
+                      {climateStatus === "error" && <span className={detailsStyles.riskNote}>Não foi possível buscar o clima agora. Vamos usar dados de exemplo de {sorrisoMt.name}/{sorrisoMt.state}.</span>}
+                    </span>
+                  </div>
+                  <div className={styles.field}>
+                    <label htmlFor="start-date">Data de início</label>
+                    <input
+                      id="start-date"
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        invalidateConfirmation();
+                      }}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className={detailsStyles.formSection} aria-labelledby="goal-title">
+                <div className={detailsStyles.sectionHeading}>
+                  <span aria-hidden="true">2</span>
+                  <div>
+                    <h3 id="goal-title">Meta e tamanho da área</h3>
+                    <p>Assim o plano sabe quanto de milho você quer buscar e o tamanho da operação.</p>
+                  </div>
+                </div>
+                <div className={detailsStyles.fieldGrid}>
+                  <div className={styles.field}>
+                    <label htmlFor="target-area">Meta de milho na segunda safra (ha)</label>
+                    <input
+                      id="target-area"
+                      type="number"
+                      min="0"
+                      value={secondCropTargetAreaHa}
+                      onChange={(e) => {
+                        setSecondCropTargetAreaHa(Number(e.target.value));
+                        invalidateConfirmation();
+                      }}
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label htmlFor="total-area">Área total (ha)</label>
+                    <input
+                      id="total-area"
+                      type="number"
+                      min="1"
+                      value={totalAreaHa}
+                      onChange={(e) => {
+                        setTotalAreaHa(Number(e.target.value));
+                        invalidateConfirmation();
+                      }}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className={detailsStyles.formSection} aria-labelledby="machines-title">
+                <div className={detailsStyles.sectionHeading}>
+                  <span aria-hidden="true">3</span>
+                  <div>
+                    <h3 id="machines-title">Máquinas de plantio</h3>
+                    <p>Informe quantas plantadeiras trabalham juntas e quanto cada uma consegue fazer por dia.</p>
+                  </div>
+                </div>
+                <div className={detailsStyles.fieldGrid}>
+                  <div className={styles.field}>
+                    <label htmlFor="planter-count">Quantidade de plantadeiras</label>
+                    <input
+                      id="planter-count"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={planterCount}
+                      onChange={(e) => {
+                        setPlanterCount(Number(e.target.value));
+                        invalidateConfirmation();
+                      }}
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label htmlFor="planter">Quanto cada plantadeira faz por dia (ha)</label>
+                    <input
+                      id="planter"
+                      type="number"
+                      min="1"
+                      value={planterCapacityHaPerDay}
+                      onChange={(e) => {
+                        setPlanterCapacityHaPerDay(Number(e.target.value));
+                        invalidateConfirmation();
+                      }}
+                    />
+                  </div>
+                </div>
+                <p className={detailsStyles.capacityNote} aria-live="polite">
+                  <strong>Capacidade total por dia:</strong> {planterCount * planterCapacityHaPerDay || 0} ha
+                  <span>{planterCount === 1 ? "1 plantadeira" : `${planterCount} plantadeiras`} × {planterCapacityHaPerDay || 0} ha/dia</span>
+                </p>
+              </section>
+
+              <section className={detailsStyles.formSection} aria-labelledby="fields-title">
+                <div className={detailsStyles.sectionHeading}>
+                  <span aria-hidden="true">4</span>
+                  <div>
+                    <h3 id="fields-title">Talhões</h3>
+                    <p>Estes são os talhões informados para esta operação.</p>
+                  </div>
+                </div>
+                <ul className={detailsStyles.itemList} aria-label="Talhões informados">
+                  {FIELDS.map((field) => (
+                    <li key={field.id} className={detailsStyles.itemCard}>
+                      <div>
+                        <strong>{field.id}</strong>
+                        <span>{field.areaHa} ha</span>
+                      </div>
+                      <span className={styles.priorityPill} data-priority={field.priority}>
+                        {field.priority === "second_crop" ? "soja e milho" : "só soja"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <section className={detailsStyles.formSection} aria-labelledby="seeds-title">
+                <div className={detailsStyles.sectionHeading}>
+                  <span aria-hidden="true">5</span>
+                  <div>
+                    <h3 id="seeds-title">Sementes</h3>
+                    <p>Veja as sementes de soja e a área que cada uma cobre.</p>
+                  </div>
+                </div>
+                <ul className={detailsStyles.itemList} aria-label="Sementes informadas">
+                  {SEED_LOTS.map((seed) => (
+                    <li key={seed.cycleDays} className={detailsStyles.itemCard}>
+                      <div>
+                        <strong>Soja de {seed.cycleDays} dias</strong>
+                        <span>colhe em cerca de {seed.cycleDays} dias</span>
+                      </div>
+                      <span className={detailsStyles.areaBadge}>cobre {seed.availableAreaHa} ha</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <details className={detailsStyles.financeDetails}>
+                <summary>Valores para calcular o resultado em dinheiro</summary>
+                <p>Se precisar, ajuste estes números. Eles servem só para a estimativa do plano.</p>
+                <div className={detailsStyles.fieldGrid}>
+                  <div className={styles.field}>
+                    <label htmlFor="soy-margin">Quanto sobra na soja (R$/ha)</label>
+                    <input
+                      id="soy-margin"
+                      type="number"
+                      value={soybeanMarginPerHa}
+                      onChange={(e) => {
+                        setSoybeanMarginPerHa(Number(e.target.value));
+                        invalidateConfirmation();
+                      }}
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label htmlFor="corn-margin">Quanto sobra no milho (R$/ha)</label>
+                    <input
+                      id="corn-margin"
+                      type="number"
+                      value={cornMarginPerHa}
+                      onChange={(e) => {
+                        setCornMarginPerHa(Number(e.target.value));
+                        invalidateConfirmation();
+                      }}
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label htmlFor="op-cost">Custo de trabalho por dia (opcional)</label>
+                    <input
+                      id="op-cost"
+                      type="number"
+                      placeholder="—"
+                      value={operatingCostPerDay}
+                      onChange={(e) => {
+                        setOperatingCostPerDay(e.target.value === "" ? "" : Number(e.target.value));
+                        invalidateConfirmation();
+                      }}
+                    />
+                  </div>
+                </div>
+              </details>
+            </div>
+
+      <div className={styles.ledgerFooter}>
+        <div className={styles.journeyActions}>
+          <button type="button" className={styles.ctaSecondary} onClick={goBack}>
+            Voltar
+          </button>
+          <button className={styles.submit} type="button" onClick={() => handleReviewDraft(draftSource)}>
+            Conferir dados →
+          </button>
+        </div>
+        <span className={styles.submitNote}>
+          Cálculo feito pelas mesmas regras, sem chute ·{" "}
+          {climateStatus === "live"
+            ? `clima buscado agora em ${municipality.name}/${municipality.state}`
+            : `dados de exemplo de ${municipality.name}/${municipality.state}`}
+        </span>
+      </div>
+
+            {error && (
+              <p className={styles.submitNote} style={{ color: "var(--risk)", marginTop: "1rem" }}>
+                Confira este dado antes de continuar: {error}
+              </p>
+            )}
+          </>
+        )}
+
+        {journeyStage === "review" && lastInput && (
+          <div className={styles.confirmationPanel} aria-labelledby="review-title">
+            <div className={styles.confirmationHead}>
+            <div>
+              <p className={styles.tableLabel}>Resumo do seu plantio · informado: {INPUT_SOURCE_LABEL[draftSource]}</p>
+              <h3 id="review-title">Confira antes de confirmar</h3>
+            </div>
+            <span className={styles.stepBadge}>só para conferir</span>
           </div>
 
           <dl className={styles.draftSummary}>
             <div><dt>Município</dt><dd>{lastInput.municipality.name}/{lastInput.municipality.state}</dd></div>
-            <div><dt>Início</dt><dd>{lastInput.startDate}</dd></div>
+            <div><dt>Começar em</dt><dd>{lastInput.startDate}</dd></div>
             <div><dt>Área total</dt><dd>{lastInput.totalAreaHa} ha</dd></div>
-            <div><dt>Plantadeira</dt><dd>{lastInput.planterCapacityHaPerDay} ha/dia</dd></div>
-            <div><dt>Meta safrinha</dt><dd>{lastInput.secondCropTargetAreaHa} ha</dd></div>
+            <div><dt>Capacidade de plantio</dt><dd>{lastInput.planterCapacityHaPerDay} ha/dia</dd></div>
+            <div><dt>Meta de milho</dt><dd>{lastInput.secondCropTargetAreaHa} ha</dd></div>
             <div><dt>Talhões</dt><dd>{lastInput.fields.length}</dd></div>
           </dl>
 
-          {draftStage === "review" ? (
-            <div className={styles.confirmationActions}>
-              <button type="button" className={styles.ctaSecondary} onClick={invalidateConfirmation}>
+            <div className={styles.journeyActions}>
+              <button type="button" className={styles.ctaSecondary} onClick={goBack}>
                 Voltar e editar
               </button>
-              <button type="button" className={styles.submit} onClick={handleConfirmAndCalculate}>
-                Confirmar e calcular →
+              <button type="button" className={styles.submit} onClick={() => setJourneyStage("confirm")}>
+                Está tudo certo →
               </button>
             </div>
-          ) : (
-            <p className={styles.confirmedNote} role="status">
-              Confirmado. O resultado abaixo usa exatamente este payload e o dataset indicado.
+          </div>
+        )}
+
+        {journeyStage === "confirm" && lastInput && (
+          <div className={styles.confirmationPanel} aria-labelledby="confirmation-title">
+            <div className={styles.confirmationHead}>
+              <div>
+                <p className={styles.tableLabel}>Última confirmação</p>
+                <h3 id="confirmation-title">Confirmar e montar o plano</h3>
+              </div>
+              <span className={styles.stepBadge}>dados conferidos</span>
+            </div>
+            <p className={styles.sectionSub} style={{ margin: "1rem 0 1.25rem" }}>
+              Vamos usar exatamente os dados que você conferiu e as informações de clima mostradas aqui. O resultado só aparece depois da sua confirmação.
             </p>
-          )}
-        </section>
-      )}
+            <div className={styles.journeyActions}>
+              <button type="button" className={styles.ctaSecondary} onClick={goBack}>
+                Voltar para revisão
+              </button>
+              <button type="button" className={styles.submit} onClick={handleConfirmAndCalculate}>
+                Confirmar e montar plano →
+              </button>
+            </div>
+          </div>
+        )}
 
-      {error && (
-        <p className={styles.submitNote} style={{ color: "var(--risk)", marginTop: "1rem" }}>
-          Entrada inválida: {error}
-        </p>
-      )}
-
-      {plan && (
-        <div style={{ marginTop: "2rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+        {journeyStage === "plan" && plan && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+            <div className={styles.modeHeader}>
+              <div>
+                <p className={styles.tableLabel}>Seu plano está pronto</p>
+                <p className={styles.modeHint}>Ele foi montado com os dados que você confirmou e o clima mostrado nesta tela.</p>
+              </div>
+              <span className={styles.stepBadge}>pronto para usar</span>
+            </div>
           <SeasonStrip
             totalAreaHa={FIELDS.filter((f) => f.priority === "second_crop").reduce((s, f) => s + f.areaHa, 0)}
             seasons={plan.historicalOutcomes.map((o) => ({ label: o.season, areaHa: o.secondCropViableAreaHa }))}
-            eyebrow="Resultado real"
-            heading={`O motor rodou as 41 safras de ${municipality.name}/${municipality.state}.`}
-            tag={dataset.real ? `motor determinístico · ${dataset.source}` : "motor determinístico · fixture"}
+            eyebrow="Como este plano se saiu"
+            heading={`Veja o resultado nas 41 safras de ${municipality.name}/${municipality.state}.`}
+            tag={dataset.real ? `cálculo pelas mesmas regras · ${dataset.source}` : "cálculo com dados de exemplo"}
           />
 
           <div className={styles.tableWrap} style={{ borderBottom: "none" }}>
-            <p className={styles.tableLabel}>Ordem recomendada (Quarenta Safras)</p>
+            <p className={styles.tableLabel}>Por onde começar o plantio</p>
             <table className={styles.table}>
               <thead>
                 <tr>
                   <th>Talhão</th>
-                  <th>Plantio soja</th>
-                  <th>Colheita soja</th>
-                  <th>Segunda safra?</th>
+                  <th>Começar a soja</th>
+                  <th>Colher a soja</th>
+                  <th>Depois, plantar milho?</th>
                 </tr>
               </thead>
               <tbody>
@@ -490,7 +639,7 @@ export function OperationForm() {
                     <td>{s.fieldId}</td>
                     <td>{s.startDate}</td>
                     <td>{s.endDate}</td>
-                    <td>{s.secondCropCandidate ? "sim, candidata" : "não, só soja"}</td>
+                    <td>{s.secondCropCandidate ? "sim" : "não, fica só na soja"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -500,19 +649,21 @@ export function OperationForm() {
           <div className={stripStyles.metrics} style={{ marginTop: 0 }}>
             <div className={stripStyles.metric}>
               <span className={stripStyles.metricValue}>{currency.format(plan.metrics.financialP20)}</span>
-              <span className={stripStyles.metricLabel}>resultado financeiro, P20</span>
+              <span className={stripStyles.metricLabel}>valor no cenário mais cauteloso entre as 41 safras</span>
             </div>
             <div className={stripStyles.metric}>
               <span className={stripStyles.metricValue}>{currency.format(plan.metrics.financialMedian)}</span>
-              <span className={stripStyles.metricLabel}>resultado financeiro, mediana</span>
+              <span className={stripStyles.metricLabel}>valor do meio das 41 safras</span>
             </div>
             <div className={stripStyles.metric}>
               <span className={stripStyles.metricValue}>{currency.format(plan.metrics.differenceFromBaselineP20)}</span>
-              <span className={stripStyles.metricLabel}>diferença vs. ordem usual, P20</span>
+              <span className={stripStyles.metricLabel}>ganho ou perda no cenário cauteloso, comparado à ordem de sempre</span>
             </div>
           </div>
 
-          <p className={styles.submitNote}>{plan.assumptions.join(" · ")}</p>
+          <div className={styles.submitNote}>
+            <strong>Importante:</strong> {PLAN_NOTES.join(" ")}
+          </div>
 
           <a
             href={buildWhatsAppShareUrl(buildPlanWhatsAppMessage(municipality, plan))}
@@ -524,34 +675,33 @@ export function OperationForm() {
             Compartilhar plano no WhatsApp
           </a>
 
-          <div className={styles.tableWrap} style={{ borderTop: "1px solid var(--rule)", borderBottom: "none", paddingTop: "1.5rem" }}>
-            <p className={styles.tableLabel}>Evento de campo</p>
-            <p className={styles.sectionSub} style={{ margin: "0 0 0.75rem" }}>
-              Simula: &ldquo;{FIELD_EVENT.notes[0]}&rdquo; a partir de {FIELD_EVENT.effectiveDate}. O motor
-              recalcula o plano sem esse talhão e mostra o diff auditável antes/depois.
-            </p>
-            <button type="button" className={styles.ctaSecondary} onClick={handleApplyEvent}>
-              Aplicar evento e replanejar
-            </button>
-          </div>
+          {lastInput && (
+            <PlanAccess
+              key={plan.inputHash}
+              title={`${lastInput.municipality.name}/${lastInput.municipality.state} · plano de plantio`}
+              operation={lastInput}
+              dataset={dataset}
+              onReplan={setReplan}
+            />
+          )}
 
           {replan && (
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div className={styles.tableWrap} style={{ borderBottom: "none" }}>
-                <p className={styles.tableLabel}>Diff auditável (antes → depois)</p>
+                <p className={styles.tableLabel}>O que mudou no plano</p>
                 <table className={styles.table}>
                   <thead>
                     <tr>
                       <th>O que mudou</th>
                       <th>Antes</th>
                       <th>Depois</th>
-                      <th>Motivo</th>
+                      <th>Por que mudou</th>
                     </tr>
                   </thead>
                   <tbody>
                     {replan.changes.map((c) => (
                       <tr key={c.entity}>
-                        <td>{c.entity}</td>
+                        <td>{friendlyChangeName(c.entity)}</td>
                         <td>{c.before}</td>
                         <td>{c.after}</td>
                         <td>{c.reason}</td>
@@ -568,12 +718,13 @@ export function OperationForm() {
                 className={styles.ctaSecondary}
                 style={{ alignSelf: "flex-start", textDecoration: "none" }}
               >
-                Compartilhar replanejamento no WhatsApp
+                Compartilhar novo plano no WhatsApp
               </a>
             </div>
           )}
-        </div>
-      )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

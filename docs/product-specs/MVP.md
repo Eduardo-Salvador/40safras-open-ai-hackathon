@@ -9,14 +9,15 @@ For a soybean producer planning a second corn crop, provide a Portuguese plannin
 assistant that accepts the operation by voice, natural-language text, or structured form,
 turns every mode into the same confirmed input, creates a robust planting order for any
 Brazilian municipality, proves the order against 41 historical climate seasons, and
-replans transparently when field conditions change.
+replans transparently when field conditions change. After a plan is ready, the producer
+may identify themselves to save it, find it later, and replan from that saved plan.
 
 ## Three-minute story
 
 1. The first screen lists the information needed: municipality, area, planter capacity,
-   seed cycles, field blocks, second-crop target, and simple margin assumptions. The
-   producer chooses voice, natural-language text, or the structured form; none is hidden
-   behind failure of another mode.
+   seed cycles, field blocks, second-crop target, and simple margin assumptions. Voice is
+   the dominant initial action. A visible “Prefere digitar?” action reveals independent
+   natural-language text and structured-form paths in one click.
 2. The assistant asks only for missing required values. The screen shows the same editable
    draft in every mode, then the assistant reads or displays a concise summary and waits
    for explicit confirmation before requesting any calculation.
@@ -29,15 +30,18 @@ replans transparently when field conditions change.
 6. The agent speaks a short conclusion while the UI shows the recommended sequence and
    its proof: viable seasons, second-crop area at P20, simple financial result at P20,
    and historical-strip evidence.
-7. A field event arrives by voice or text. The AI extracts changed constraints, the
+7. If the producer chooses “Salvar este plano”, the app asks for e-mail and password only
+   then. The field called “E-mail” is sent as `username` to the demo login. Cancelling
+   keeps the calculated result visible but does not save it.
+8. A field event arrives by voice or text from a saved plan. The AI extracts changed constraints, the
    engine recomputes, and the UI shows what moved, why, and the impact.
-8. The result is shared through a real WhatsApp deep link. The team reveals the boundary:
+9. The result is shared through a real WhatsApp deep link. The team reveals the boundary:
    AI interprets and communicates; code calculates.
 
 ### AC-00 - Multi-input confirmed calculation
 
-- The initial screen explains what must be spoken or filled and presents voice, text, and
-  structured-form entry as visible choices.
+- The initial screen explains what must be spoken or filled, presents voice as the
+  dominant action, and keeps a visible one-click path to text and structured-form entry.
 - The browser starts a Portuguese speech-to-speech session only after microphone consent.
 - The agent can collect the canonical operation through natural conversation and exposes
   a synchronized transcript or editable structured draft.
@@ -107,8 +111,8 @@ The interface must not claim validated support for profiles that do not exist.
 
 ### AC-06 - Replan
 
-- Given a field event that blocks a field or changes available seed, the app produces a
-  new plan and deterministic diff.
+- Given a saved plan and a field event that blocks a field or changes available seed, the
+  app produces a new plan and deterministic diff.
 - Each diff item identifies changed constraint, before/after state, and reason.
 - The original plan remains visible for comparison.
 
@@ -138,6 +142,26 @@ The interface must not claim validated support for profiles that do not exist.
 - Real data, cached data, synthetic fixtures, user assumptions, third-party code, and
   team-built code are clearly separated.
 
+### AC-10 - Progressive authentication and saved plans
+
+- A producer can enter the operation, confirm it, calculate it, and view the full result
+  without an account prompt.
+- Only the voluntary action to save a completed plan requests identification. Cancelling,
+  failing, or deferring this step keeps the current result visible and explicitly unsaved.
+- The demo login accepts `{ username, password }`; the UI labels `username` as “E-mail”
+  and does not alter the value. A signed HttpOnly cookie keeps the session for up to 8
+  hours.
+- The server stores the confirmed operation, dataset, deterministic result, provenance,
+  hashes, timestamps, and replans in the local file `.data/analyses.json`.
+- Replanning begins from a saved plan and appends its auditable result to that record; the
+  original calculated plan remains available for comparison.
+- This is a single-user demo account configured by `APP_LOGIN_USER` and
+  `APP_LOGIN_PASSWORD`, not individual producer accounts or multi-tenant access. Anyone
+  with the shared credentials sees the same demo history.
+- Local-file persistence is for the running demo only. It must not be described as
+  durable on Vercel or as a production retention solution; retention and migration remain
+  pending.
+
 ## Ordered extensions after the core is verified
 
 ### X-01 - IBGE calibration and analogous yields
@@ -162,8 +186,10 @@ The interface must not claim validated support for profiles that do not exist.
 
 ## Non-goals
 
-- Login, farm accounts, user database, NASA POWER, maps/drawn fields, PDF for banks or
-  insurers, sophisticated financial optimization, dashboard-as-product, or a scientifically
+- Mandatory login before entering or calculating, external identity-provider integration,
+  broad farm-account administration, individual producer accounts, multi-tenant isolation,
+  durable Vercel storage, NASA POWER, maps/drawn fields, PDF for banks or insurers,
+  sophisticated financial optimization, dashboard-as-product, or a scientifically
   validated agronomic model.
 - Telephone/SIP calling, always-listening audio, voice biometrics, or storing raw audio.
 - Exact yield prediction without a serious temporal backtest, baseline, error metric, and

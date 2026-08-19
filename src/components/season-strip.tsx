@@ -22,9 +22,9 @@ type SeasonStripProps = {
 export function SeasonStrip({
   totalAreaHa,
   seasons,
-  eyebrow = "Prova histórica",
-  heading = "41 safras, uma barra cada.",
-  tag = "dados ilustrativos",
+  eyebrow = "Olhando para safras passadas",
+  heading = "Veja em quais safras deu tempo de plantar milho.",
+  tag = "dados de exemplo",
 }: SeasonStripProps) {
   const resolvedSeasons =
     seasons ??
@@ -52,7 +52,7 @@ export function SeasonStrip({
       <div
         className={styles.strip}
         role="img"
-        aria-label={`${viableCount} de ${resolvedSeasons.length} safras históricas viáveis para segunda safra`}
+        aria-label={`Em ${viableCount} de ${resolvedSeasons.length} safras, deu tempo de plantar milho na segunda safra`}
       >
         {resolvedSeasons.map((s, i) => (
           <span
@@ -60,7 +60,7 @@ export function SeasonStrip({
             className={styles.bar}
             data-viable={s.areaHa > 0}
             style={{ height: `${18 + (s.areaHa / maxAreaHa) * 70}px` }}
-            title={`Safra ${s.label}: ${s.areaHa} ha com janela para segunda safra`}
+            title={`Safra ${s.label}: ${s.areaHa} ha onde deu tempo de plantar milho`}
           />
         ))}
       </div>
@@ -68,11 +68,11 @@ export function SeasonStrip({
       <div className={styles.stats}>
         <div className={styles.statGroup}>
           <span className={styles.dot} data-tone="soy" />
-          <span>viável para segunda safra</span>
+          <span>deu tempo de plantar milho</span>
         </div>
         <div className={styles.statGroup}>
           <span className={styles.dot} data-tone="risk" />
-          <span>sem janela para segunda safra</span>
+          <span>não deu tempo de plantar milho</span>
         </div>
       </div>
 
@@ -82,21 +82,21 @@ export function SeasonStrip({
             {viableCount}
             <span className={styles.metricOf}>/{resolvedSeasons.length}</span>
           </span>
-          <span className={styles.metricLabel}>safras viáveis</span>
+          <span className={styles.metricLabel}>safras em que deu para plantar milho</span>
         </div>
         <div className={styles.metric}>
           <span className={styles.metricValue}>
             {p20Ha}
             <span className={styles.metricOf}> ha</span>
           </span>
-          <span className={styles.metricLabel}>segunda safra em P20</span>
+          <span className={styles.metricLabel}>área de milho no cenário mais cauteloso</span>
         </div>
         <div className={styles.metric}>
           <span className={styles.metricValue}>
             {p20Pct}
             <span className={styles.metricOf}>%</span>
           </span>
-          <span className={styles.metricLabel}>da área, cenário P20</span>
+          <span className={styles.metricLabel}>parte da área nesse cenário mais cauteloso</span>
         </div>
       </div>
     </div>

@@ -22,6 +22,8 @@ orientação do que informar
 → geração de baseline e candidatos
 → candidatos × 41 safras
 → ranking e plano recomendado
+→ identificação somente ao escolher salvar
+→ plano salvo e histórico do produtor
 → evento de campo por voz ou texto
 → confirmação do evento
 → replano e diff
@@ -48,6 +50,8 @@ orientação do que informar
 - [ ] `node:crypto` para hashes determinísticos do plano e replano.
 - [ ] Telegram Bot API somente como extensão gratuita se o core estiver verde.
 - [ ] Vercel somente depois do caminho local e offline estar verificado.
+- [ ] Login da demonstração usa credenciais locais e persistência em arquivo; contratos de
+  `origin/Eduarco` ainda precisam ser integrados à UI. Não adicionar provedor externo.
 
 ## Variáveis de ambiente e credenciais
 
@@ -82,6 +86,15 @@ orientação do que informar
 - [ ] Configurar as mesmas variáveis no ambiente de preview/produção.
 - [ ] Definir `APP_BASE_URL` para o link compartilhável do resultado.
 - [ ] Não gravar cache indispensável apenas no filesystem efêmero da Vercel.
+- [ ] Não prometer que `.data/analyses.json` sobrevive a uma execução/serverless da Vercel;
+  persistência durável exige decisão e migração futuras.
+
+### Login simples da demonstração
+
+- [ ] Definir `APP_LOGIN_USER` e `APP_LOGIN_PASSWORD` somente no ambiente do servidor.
+- [ ] Definir `SESSION_SECRET` aleatório com pelo menos 32 caracteres, somente no servidor.
+- [ ] Nunca criar variáveis públicas para credenciais, segredo de sessão ou o arquivo de
+  análises.
 
 ## Fase 0 — decisões humanas antes de começar o código
 
@@ -151,7 +164,7 @@ Concluído quando: duas implementações independentes produziriam o mesmo resul
 Dependências: K0.2. Responsável: produto + IA.
 
 - [ ] Confirmar push-to-talk como padrão.
-- [ ] Confirmar que voz, texto natural e formulário aparecem juntos na primeira tela.
+- [ ] Confirmar que voz aparece como ação dominante e “Prefere digitar?” revela texto natural e formulário em um clique.
 - [ ] Confirmar que nenhum modo depende da falha de outro para ficar disponível.
 - [ ] Definir resumo falado obrigatório antes da confirmação.
 - [ ] Definir frases afirmativas e negativas aceitas no roteiro canônico.
@@ -165,6 +178,26 @@ Dependências: K0.2. Responsável: produto + IA.
 - [ ] Definir destinatário de demonstração que não cause impacto real indevido.
 
 Concluído quando: o roteiro de confirmação normal, correção, negação e desastre está escrito.
+
+### K0.5 — Autenticação progressiva e plano salvo
+
+Dependências: K0.4. Responsável: product owner + backend.
+
+- [x] Product owner confirmou login simples de demonstração: e-mail/senha na UI, enviados
+  como `username`/`password`, com sessão HttpOnly de oito horas. Evidência: decisão do
+  product owner e implementação em `origin/Eduarco`.
+- [x] Product owner confirmou persistência local de demonstração em `.data/analyses.json`.
+  Evidência: `FileAnalysisStore` em `origin/Eduarco`.
+- [x] Confirmar que a conta é solicitada somente em “Salvar este plano”, nunca antes do
+  primeiro cálculo.
+- [x] Confirmar que o histórico e o replano usam o plano salvo da única conta de
+  demonstração; não há produtor individual nem isolamento multi-tenant.
+- [ ] Definir retenção, exclusão/exportação e tratamento de plano salvo por engano.
+- [ ] Definir persistência durável, contas individuais, ownership por registro e migração
+  para produção; não inferir isso da demonstração single-user.
+
+Concluído quando: a decisão de demonstração está documentada e as pendências de produção
+permanecem explícitas; PS1 integra os contratos existentes sem criar contratos paralelos.
 
 ## Fase 1 — repositório e scaffold, serial
 
@@ -405,7 +438,7 @@ Responsável: frontend/demo. Escrita exclusiva: `src/app/page.tsx`, `src/compone
 #### C1.2 — Coleta e confirmação
 
 - [ ] Mostrar antes da entrada a lista: município/UF, data inicial, área, talhões, sementes/ciclos, capacidade, meta e premissas financeiras.
-- [ ] Criar três ações igualmente visíveis: `Falar`, `Escrever livremente` e `Preencher formulário`.
+- [ ] Criar voz como ação dominante e o convite `Prefere digitar?`, que revela `Escrever livremente` e `Preencher formulário`.
 - [ ] Criar entrada de texto natural.
 - [ ] Criar formulário campo a campo que não chama IA.
 - [ ] Criar botão push-to-talk e estados de permissão/conexão.
@@ -467,7 +500,8 @@ registrada no plano ativo.
 
 ## Fase 5 — Onda 2 paralela
 
-Começar D2, N1 e O1 depois de I1. Os conjuntos de escrita abaixo são separados.
+Começar D2, N1 e O1 depois de I1. PS1 só começa depois de I1 e das decisões de K0.5. Os
+conjuntos de escrita abaixo são separados.
 
 ### Trilha D — E2: replano e diff
 
@@ -504,6 +538,34 @@ Escrita exclusiva: `src/lib/notifications/`, `src/lib/whatsapp.ts`, `src/lib/tel
 - [ ] No bot, exigir confirmação de envio e destinatário explícito.
 - [ ] Testar encode dos dois links e disponibilidade do Web Share fallback.
 - [ ] Se houver bot, testar timeout, erro e não duplicação.
+
+### Trilha P — PS1: autenticação progressiva, plano salvo e histórico
+
+Dependências: I1 e decisão K0.5. Responsável: backend + frontend. Reutilizar os contratos
+de `origin/Eduarco`; não introduzir provedor, banco ou schema alternativo nesta trilha.
+
+- [ ] Criar o ponto de entrada “Salvar este plano” somente após `PlanResult` íntegro, sem
+  pedir identificação nas etapas de relato, revisão, confirmação ou cálculo.
+- [ ] Usar `POST /api/auth/login` com `{ username, password }`; o rótulo visual é
+  “E-mail”, mas seu valor segue inalterado em `username`.
+- [ ] Consultar `GET /api/auth/session`, usar `POST /api/auth/logout` e deixar o cookie
+  HttpOnly de oito horas sob controle do servidor.
+- [ ] Reutilizar `POST`/`GET /api/analyses`, `GET /api/analyses/:id` e
+  `POST /api/analyses/:id/replan` para salvar, listar, abrir e replanejar.
+- [ ] Mostrar o plano e seus replanos como dados da conta única de demonstração; não
+  rotular como histórico particular, nem prometer separação entre produtores.
+- [ ] Explicar internamente que `.data/analyses.json` é local e não é armazenamento
+  durável em Vercel.
+- [ ] Mostrar estados simples: “Salvar este plano”, “Entre para guardar”, “Salvando…”,
+  “Plano salvo” e “Não foi salvo; tente de novo”.
+- [ ] Ao cancelar identificação ou ocorrer erro, manter o resultado calculado aberto e
+  não criar histórico anônimo.
+- [ ] Testar cálculo anônimo, cancelamento da identificação, salvamento autorizado,
+  sessão expirada, requisição sem cookie, listagem da sessão única e replano iniciado a
+  partir do plano salvo.
+
+Concluído quando: a UI usa os contratos da Eduarco, a conta única salva/lista/replaneja
+análises locais e o fluxo anônimo continua chegando ao cálculo.
 
 ### Trilha O — O1: fallbacks de IA e explicação segura
 
@@ -586,6 +648,11 @@ Dependências: I2, `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`. Não começar se h
 - [ ] Confirmar que alerta usa números do payload determinístico.
 - [ ] Confirmar autorização humana antes de envio externo.
 - [ ] Se o bot existir, confirmar que token não aparece no cliente e repetição não duplica envio.
+- [ ] Confirmar que credenciais e `SESSION_SECRET` ficam no servidor, cookie é HttpOnly e
+  endpoints de análise rejeitam requisição sem sessão válida.
+- [ ] Confirmar que plano salvo não contém áudio bruto, segredo ou token de sessão.
+- [ ] Confirmar que materiais de demo não alegam multi-tenancy, ownership individual ou
+  durabilidade da pasta `.data` em Vercel.
 
 ### R3 — Caminhos manuais
 
@@ -598,6 +665,13 @@ Dependências: I2, `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`. Não começar se h
 - [ ] OpenAI indisponível usa recuperação rotulada.
 - [ ] Open-Meteo indisponível usa fixture rotulada.
 - [ ] Cada um dos três municípios funciona offline.
+- [ ] Cálculo anônimo chega ao plano sem tela de conta.
+- [ ] “Salvar este plano” pede identificação somente depois do resultado e cancelamento
+  mantém o plano visível como não salvo.
+- [ ] Login aceita o e-mail rotulado pela UI como `username`, mantém sessão por até oito
+  horas e logout a encerra.
+- [ ] Histórico e replano funcionam para a conta única de demonstração; a tela não promete
+  planos isolados por produtor.
 - [ ] Evento digitado produz replano.
 - [ ] Evento falado exige confirmação e produz o mesmo contrato.
 - [ ] Envio exige autorização separada.
@@ -675,6 +749,7 @@ K0 decisões humanas
     D2 replano + diff
     N1 notificações
     O1 fallbacks
+    PS1 autenticação progressiva + persistência (após K0.5)
 → I2 evento até envio
 → opcional: XT Telegram Bot API
 → R1/R2/R3/R4 revisão
@@ -694,6 +769,8 @@ K0 decisões humanas
 - [ ] Não cortar replano e diff.
 - [ ] Não cortar compartilhamento sem credencial.
 - [ ] Não cortar caminho offline claramente rotulado.
+- [ ] Não antecipar identificação para desbloquear a entrada ou o cálculo; se a
+  persistência não estiver pronta, deixar o plano explicitamente não salvo.
 
 ## Produto final — definição de pronto
 
@@ -709,6 +786,11 @@ K0 decisões humanas
 - [ ] Cada candidato possui 41 resultados históricos.
 - [ ] Recomendação segue ranking documentado e reproduzível.
 - [ ] Todos os números são rastreáveis ao payload.
+- [ ] Produtor pode calcular sem conta e recebe identificação somente ao salvar.
+- [ ] Plano salvo local contém operação confirmada, dataset, resultado, proveniência e
+  replanos para a conta única de demonstração.
+- [ ] Histórico permite abrir plano salvo e iniciar replano sem alegar conta individual,
+  multi-tenancy ou durabilidade na Vercel.
 - [ ] Evento por voz/texto exige confirmação.
 - [ ] Replano preserva o original e mostra diff auditável.
 - [ ] Evento crítico não envia alerta sem autorização separada.

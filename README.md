@@ -13,6 +13,9 @@ when field conditions change. The result can be heard, read, and shared through 
 Start with [AGENTS.md](AGENTS.md) and
 [`docs/exec-plans/active/HACKATHON_PLAN.md`](docs/exec-plans/active/HACKATHON_PLAN.md).
 
+For canonical product states, interaction decisions, and the guided layout, read
+[`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md).
+
 For the complete plain-language flow, read
 [`docs/product-specs/PROJECT_WALKTHROUGH.md`](docs/product-specs/PROJECT_WALKTHROUGH.md).
 For current work and implementation order, read [`pendencia.md`](pendencia.md).

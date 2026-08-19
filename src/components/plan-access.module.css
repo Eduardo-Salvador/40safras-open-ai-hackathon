@@ -1,0 +1,169 @@
+.access {
+  margin-top: 2rem;
+  padding: 1.35rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--bg-raised) 92%, white);
+}
+
+.heading h3,
+.formTitle,
+.savedContext p {
+  margin: 0;
+  color: var(--ink);
+}
+
+.heading h3 {
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 2vw, 1.7rem);
+  letter-spacing: -0.02em;
+}
+
+.heading > p:last-child,
+.startCard > p,
+.formHint,
+.demoNote,
+.message,
+.status,
+.replanResult > p:last-of-type {
+  color: var(--ink-dim);
+  line-height: 1.5;
+}
+
+.heading > p:last-child { margin: 0.55rem 0 0; max-width: 58ch; }
+
+.eyebrow,
+.savedLabel {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-mono);
+  color: var(--corn-dim);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.startCard,
+.loginForm,
+.eventForm,
+.replanResult {
+  margin-top: 1.1rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--rule);
+}
+
+.startCard > p { margin: 0 0 0.85rem; }
+
+.loginForm,
+.eventForm {
+  display: grid;
+  gap: 0.95rem;
+  max-width: 34rem;
+}
+
+.formTitle { font-weight: 750; font-size: 1.05rem; }
+.formHint { margin: 0.3rem 0 0; font-size: 0.93rem; }
+
+.loginForm label,
+.eventForm > label,
+.eventForm fieldset {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--ink);
+  font-weight: 650;
+  font-size: 0.92rem;
+}
+
+.loginForm input,
+.eventForm input[type="date"],
+.eventForm textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--rule-strong);
+  border-radius: 0.45rem;
+  background: var(--bg-raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 400;
+  padding: 0.7rem 0.75rem;
+}
+
+.loginForm input:focus-visible,
+.eventForm input:focus-visible,
+.eventForm textarea:focus-visible,
+.primaryAction:focus-visible,
+.quietAction:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--corn) 68%, transparent);
+  outline-offset: 2px;
+}
+
+.eventForm fieldset { border: 0; margin: 0; padding: 0; }
+.eventForm legend { padding: 0; }
+
+.fieldChoices { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.55rem; }
+
+.fieldChoice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--bg-raised-2) 34%, var(--bg-raised));
+  font-weight: 500;
+}
+
+.fieldChoice input { accent-color: var(--soy); }
+
+.primaryAction,
+.quietAction {
+  width: fit-content;
+  min-height: 2.75rem;
+  border-radius: 0.45rem;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.primaryAction {
+  border: 1px solid var(--soy);
+  padding: 0.65rem 0.95rem;
+  background: var(--soy);
+  color: var(--bg-raised);
+}
+
+.primaryAction:disabled { cursor: wait; opacity: 0.7; }
+.primaryAction:hover:not(:disabled) { background: var(--ink); }
+
+.quietAction {
+  border: 0;
+  padding: 0.4rem 0;
+  background: transparent;
+  color: var(--ink-dim);
+  text-decoration: underline;
+}
+
+.formActions,
+.savedContext { display: flex; align-items: center; gap: 1rem; }
+.formActions { flex-wrap: wrap; }
+.demoNote { margin: 0; font-size: 0.78rem; }
+
+.savedContext {
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding: 0.8rem;
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--soy) 8%, var(--bg-raised));
+}
+
+.savedLabel { margin-bottom: 0.2rem; }
+.message { margin: 1rem 0 0; font-size: 0.9rem; }
+.status { margin: 1rem 0 0; }
+.replanResult { color: var(--ink); }
+.replanResult > p:last-of-type { margin-bottom: 1rem; }
+
+@media (max-width: 38rem) {
+  .access { padding: 1.1rem; }
+  .savedContext { align-items: flex-start; flex-direction: column; gap: 0.5rem; }
+  .fieldChoices { grid-template-columns: 1fr; }
+}
