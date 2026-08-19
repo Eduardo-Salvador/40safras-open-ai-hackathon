@@ -259,35 +259,35 @@ Responsável: engine/data. Escrita exclusiva: `src/data/`, `src/domain/` exceto
 
 #### A1.1 — Geocoding
 
-- [ ] Criar `src/data/geocoding.ts`.
-- [ ] Consultar Open-Meteo com `countryCode=BR`, `language=pt`, `count=5`.
-- [ ] Normalizar nome, UF, latitude, longitude, elevação e timezone.
-- [ ] Nunca selecionar silenciosamente quando houver mais de uma opção.
-- [ ] Tratar vazio, timeout, rate limit e resposta inválida.
-- [ ] Criar testes com fetch mockado.
+- [x] Criar `src/data/geocoding.ts`.
+- [x] Consultar Open-Meteo com `countryCode=BR`, `language=pt`, `count=5`.
+- [x] Normalizar nome, UF, latitude, longitude, elevação e timezone.
+- [x] Nunca selecionar silenciosamente quando houver mais de uma opção.
+- [x] Tratar vazio, timeout, rate limit e resposta inválida.
+- [x] Criar testes com fetch mockado.
 
 #### A1.2 — Clima e 41 safras
 
-- [ ] Criar `src/data/climate.ts` e `src/data/normalize.ts`.
-- [ ] Consultar `archive-api.open-meteo.com/v1/archive`.
+- [x] Criar `src/data/climate.ts` e `src/data/normalize.ts`.
+- [x] Consultar `archive-api.open-meteo.com/v1/archive`.
 - [x] Fixar `models=era5`, conforme decisão técnica registrada; ERA5-Land foi rejeitado por séries incompletas/`null`.
-- [ ] Fixar início `1985-07-01` e fim `2026-06-30`.
+- [x] Fixar início `1985-07-01` e fim `2026-06-30`.
 - [x] Pedir precipitação, ET0 e temperatura mínima/máxima. Umidade superficial permanece indisponível e fora do contrato, sem substituição sintética.
-- [ ] Separar os dias em exatamente 41 anos agrícolas.
-- [ ] Rejeitar dia ausente, unidade inesperada ou safra incompleta.
-- [ ] Registrar fonte, período, grid, variáveis, unidades e data de recuperação.
-- [ ] Calcular `datasetHash` depois da normalização.
+- [x] Separar os dias em exatamente 41 anos agrícolas.
+- [x] Rejeitar dia ausente, unidade inesperada, `null` ou safra incompleta.
+- [x] Registrar fonte, período, grid/coordenada, variáveis, unidades e data de recuperação.
+- [x] Calcular `datasetHash` sobre o dataset normalizado antes de apresentar o plano.
 
 #### A1.3 — Cache e caminho offline
 
-- [ ] Criar interface `ClimateCache`.
-- [ ] Implementar cache em memória para execução local.
-- [ ] Implementar leitura de fixtures preparadas.
-- [ ] Definir chave por coordenada/grid, modelo, período e variáveis.
-- [ ] Salvar fixtures reais dos três municípios com proveniência.
-- [ ] Identificar na resposta `live`, `cached` ou `fixture`.
-- [ ] Confirmar que falha ao vivo retorna fixture apenas para município preparado.
-- [ ] Nunca misturar parte ao vivo com parte sintética sem rótulo.
+- [x] Criar fronteira de cache climático.
+- [x] Implementar cache em memória para execução local.
+- [x] Implementar leitura de fixtures preparadas.
+- [x] Definir chave por coordenada/grid, modelo, período e variáveis.
+- [x] Salvar fixtures reais dos três municípios com proveniência.
+- [x] Identificar na resposta `live`, `cached` ou `fixture`.
+- [x] Confirmar que falha ao vivo retorna fixture apenas para município preparado.
+- [x] Nunca misturar parte ao vivo com parte sintética sem rótulo.
 
 #### A1.4 — Gerador de candidatos
 

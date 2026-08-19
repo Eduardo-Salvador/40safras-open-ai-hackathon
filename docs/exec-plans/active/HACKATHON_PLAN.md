@@ -80,7 +80,7 @@ have higher value after core freeze.
 |---|---|---|---|---|
 | K0/K1/S1/S2/A1/O1 + backend integration | `Eduarco` branch | contracts, APIs, OpenAI, manifests/configs and execution docs | after `main` sync | - |
 | F1/F2 + visual integration | `Murilo` branch | UI, global styles, components, sharing and assets | after S1/S2 freeze | - |
-| D1 | `Vitor` branch | geocoding, climate normalization, cache and municipality fixtures | after S1/S2 freeze | - |
+| D1 | `Vitor` branch | geocoding, climate normalization, cache and municipality fixtures | after S1/S2 freeze | 2026-08-19 |
 | E1/E2 | `Pedro` branch | deterministic planner, simulator, metrics, finance and diff | after S1/S2 freeze | - |
 
 ## Decision log
@@ -125,6 +125,7 @@ have higher value after core freeze.
 | Offline journey | production build at `localhost:3002`: confirm -> plan -> typed rain event -> confirm -> replan | 41-season result, baseline/recommended comparison and auditable diff rendered | 2026-08-19 |
 | Sharing | authorize checkbox in the offline journey | WhatsApp, Telegram and Web Share/copy controls shown only after explicit authorization | 2026-08-19 |
 | Default scenario regression | `npm test -- tests/engine/planner.test.ts` | 9 tests passed, including the exact fields and seed lots shown by the UI | 2026-08-19 |
+| Vitor territory | production build at `localhost:3002/territorio` | search, farm/field drawing and movement, metadata/date persistence, 3D, live centroid forecast, invalidation and reload passed; browser console had no errors | 2026-08-19 |
 
 ## Open risks
 
