@@ -152,6 +152,75 @@ silenciosamente entre municípios ambíguos.
 Resposta `200`: `{ "dataset": HistoricalDataset }`. O dataset indica `cached`, `real`,
 fonte e variáveis. Erros: `400` contrato inválido; `502` falha sem cache/fixture válido.
 
+### `GET /api/territory-search?q=Sorriso%20MT`
+
+Busca explícita de local para o editor territorial. Usa OpenStreetMap Nominatim no
+servidor e não requer credencial do frontend.
+
+```json
+{
+  "results": [
+    {
+      "id": "123",
+      "name": "Sorriso",
+      "displayName": "Sorriso, Mato Grosso, Brasil",
+      "latitude": -12.5453,
+      "longitude": -55.7217,
+      "boundingBox": [-12.7, -12.4, -55.9, -55.5],
+      "type": "administrative"
+    }
+  ],
+  "source": "OpenStreetMap Nominatim"
+}
+```
+
+Erros: `400` para busca com menos de dois caracteres; `502` para falha do provedor.
+O cliente deve pesquisar apenas após ação explícita do usuário, não a cada tecla. Deve
+sempre mostrar os resultados e exigir seleção humana; nunca assumir que o primeiro item
+é o município ou imóvel pretendido.
+
+### `GET /api/weather?latitude=-12.5453&longitude=-55.7217`
+
+Previsão de sete dias para a célula de modelo próxima ao centroide informado.
+
+```json
+{
+  "location": {
+    "latitude": -12.54,
+    "longitude": -55.71,
+    "timezone": "America/Cuiaba"
+  },
+  "generatedAt": "ISO-8601",
+  "source": "Open-Meteo Forecast API (Best Match)",
+  "days": [
+    {
+      "date": "2026-08-20",
+      "weatherCode": 80,
+      "temperatureMinC": 18,
+      "temperatureMaxC": 31,
+      "precipitationMm": 7,
+      "precipitationProbabilityPct": 62,
+      "et0Mm": 4.2,
+      "windGustKmh": 33
+    }
+  ],
+  "signals": [
+    {
+      "code": "heavy_rain | dry_window | heat | wind | no_alert",
+      "severity": "attention | favorable | neutral",
+      "title": "texto curto",
+      "detail": "evidência numérica"
+    }
+  ],
+  "disclaimer": "proveniência e limite de uso"
+}
+```
+
+Esta previsão não substitui o histórico ERA5 de `/api/climate` e não entra no planner
+sem uma mudança explícita do contrato congelado. Os sinais são heurísticas
+determinísticas de interface, não prescrição agronômica. Erros: `400` sem coordenadas;
+`502` para coordenada fora da faixa, falha de rede ou payload inválido.
+
 ## IA textual e voz
 
 ### `POST /api/parse-brief`
