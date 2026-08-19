@@ -6,6 +6,7 @@ const ForecastResponseSchema = z.object({
   timezone: z.string(),
   daily: z.object({
     time: z.array(z.string()),
+    weather_code: z.array(z.number().nullable()),
     temperature_2m_min: z.array(z.number().nullable()),
     temperature_2m_max: z.array(z.number().nullable()),
     precipitation_sum: z.array(z.number().nullable()),
@@ -17,6 +18,7 @@ const ForecastResponseSchema = z.object({
 
 export type ForecastDay = {
   date: string;
+  weatherCode: number | null;
   temperatureMinC: number | null;
   temperatureMaxC: number | null;
   precipitationMm: number | null;
@@ -34,11 +36,31 @@ export type WeatherSignal = {
 
 export type WeatherForecast = {
   location: { latitude: number; longitude: number; timezone: string };
-  source: "Open-Meteo forecast";
+  generatedAt: string;
+  source: "Open-Meteo Forecast API (Best Match)";
   days: ForecastDay[];
   signals: WeatherSignal[];
   disclaimer: string;
 };
+
+export type WeatherCondition = {
+  icon: string;
+  label: string;
+};
+
+export function describeWeatherCode(code: number | null): WeatherCondition {
+  if (code === 0) return { icon: "☀️", label: "Céu limpo" };
+  if (code === 1 || code === 2) return { icon: "🌤️", label: "Poucas nuvens" };
+  if (code === 3) return { icon: "☁️", label: "Nublado" };
+  if (code === 45 || code === 48) return { icon: "🌫️", label: "Neblina" };
+  if (code != null && code >= 51 && code <= 57) return { icon: "🌦️", label: "Garoa" };
+  if (code != null && code >= 61 && code <= 67) return { icon: "🌧️", label: "Chuva" };
+  if (code != null && code >= 71 && code <= 77) return { icon: "🌨️", label: "Neve" };
+  if (code != null && code >= 80 && code <= 82) return { icon: "🌦️", label: "Pancadas" };
+  if (code != null && code >= 85 && code <= 86) return { icon: "🌨️", label: "Neve forte" };
+  if (code != null && code >= 95) return { icon: "⛈️", label: "Temporal" };
+  return { icon: "◌", label: "Sem condição" };
+}
 
 const valueAt = (values: Array<number | null>, index: number) => values[index] ?? null;
 
@@ -118,6 +140,7 @@ export async function fetchWeatherForecast(
     [
       "temperature_2m_min",
       "temperature_2m_max",
+      "weather_code",
       "precipitation_sum",
       "precipitation_probability_max",
       "et0_fao_evapotranspiration",
@@ -135,6 +158,7 @@ export async function fetchWeatherForecast(
   const body = parsed.data;
   const days = body.daily.time.map<ForecastDay>((date, index) => ({
     date,
+    weatherCode: valueAt(body.daily.weather_code, index),
     temperatureMinC: valueAt(body.daily.temperature_2m_min, index),
     temperatureMaxC: valueAt(body.daily.temperature_2m_max, index),
     precipitationMm: valueAt(body.daily.precipitation_sum, index),
@@ -145,9 +169,10 @@ export async function fetchWeatherForecast(
 
   return {
     location: { latitude: body.latitude, longitude: body.longitude, timezone: body.timezone },
-    source: "Open-Meteo forecast",
+    generatedAt: new Date().toISOString(),
+    source: "Open-Meteo Forecast API (Best Match)",
     days,
     signals: deriveWeatherSignals(days),
-    disclaimer: "Apoio operacional de protótipo. Não substitui previsão local, agrônomo ou ZARC.",
+    disclaimer: "Previsão de uma célula meteorológica próxima ao centroide, não uma medição dentro do talhão. Apoio operacional de protótipo; não substitui estação local, agrônomo ou ZARC.",
   };
 }

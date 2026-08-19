@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { deriveWeatherSignals, fetchWeatherForecast, type ForecastDay } from "@/data/weather";
+import { describeWeatherCode, deriveWeatherSignals, fetchWeatherForecast, type ForecastDay } from "@/data/weather";
 
 const day = (overrides: Partial<ForecastDay> = {}): ForecastDay => ({
   date: "2026-08-20",
+  weatherCode: 1,
   temperatureMinC: 20,
   temperatureMaxC: 30,
   precipitationMm: 2,
@@ -40,6 +41,7 @@ describe("weather forecast normalization", () => {
           timezone: "America/Cuiaba",
           daily: {
             time: ["2026-08-20"],
+            weather_code: [80],
             temperature_2m_min: [18],
             temperature_2m_max: [31],
             precipitation_sum: [7],
@@ -55,9 +57,16 @@ describe("weather forecast normalization", () => {
     const result = await fetchWeatherForecast(-12.54, -55.71, fetchMock as typeof fetch);
     expect(result.location.timezone).toBe("America/Cuiaba");
     expect(result.days[0]).toEqual(
-      expect.objectContaining({ precipitationMm: 7, precipitationProbabilityPct: 62, et0Mm: 4.2 }),
+      expect.objectContaining({ weatherCode: 80, precipitationMm: 7, precipitationProbabilityPct: 62, et0Mm: 4.2 }),
     );
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("translates WMO codes into readable conditions", () => {
+    expect(describeWeatherCode(0)).toEqual({ icon: "☀️", label: "Céu limpo" });
+    expect(describeWeatherCode(63).label).toBe("Chuva");
+    expect(describeWeatherCode(95).label).toBe("Temporal");
+    expect(describeWeatherCode(null).label).toBe("Sem condição");
   });
 
   it("rejects invalid coordinates and payloads", async () => {

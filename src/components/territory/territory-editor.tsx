@@ -6,7 +6,7 @@ import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from "maplibr
 import { area as turfArea, booleanWithin, centroid, polygon as turfPolygon } from "@turf/turf";
 import type { FeatureCollection, Geometry, GeoJsonProperties } from "geojson";
 import styles from "./territory-editor.module.css";
-import type { WeatherForecast } from "@/data/weather";
+import { describeWeatherCode, type WeatherForecast } from "@/data/weather";
 
 type Coordinate = [number, number];
 type Crop = "soybean" | "corn" | "tomato" | "other";
@@ -48,6 +48,12 @@ const closed = (coordinates: Coordinate[]): Coordinate[] =>
 
 const shapePolygon = (shape: TerritoryShape) => turfPolygon([closed(shape.coordinates)]);
 const hectares = (shape: TerritoryShape) => turfArea(shapePolygon(shape)) / 10_000;
+const weatherKey = (shape: TerritoryShape | null) =>
+  shape ? `${shape.id}:${shape.coordinates.map(([longitude, latitude]) => `${longitude.toFixed(6)},${latitude.toFixed(6)}`).join(";")}` : "";
+const weatherNumber = (value: number | null, digits = 0) =>
+  value == null ? "—" : value.toLocaleString("pt-BR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+const forecastDate = (date: string, options: Intl.DateTimeFormatOptions) =>
+  new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", options);
 
 function getSelected(project: TerritoryProject, selectedId: string | null) {
   if (selectedId === "farm") return project.farm;
@@ -116,6 +122,7 @@ export function TerritoryEditor() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [weather, setWeather] = useState<WeatherForecast | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherTargetKey, setWeatherTargetKey] = useState("");
 
   const applyProject = useCallback((next: TerritoryProject | ((current: TerritoryProject) => TerritoryProject)) => {
     setProject((current) => {
@@ -408,6 +415,27 @@ export function TerritoryEditor() {
 
   const selected = useMemo(() => getSelected(project, selectedId), [project, selectedId]);
   const farmArea = project.farm ? hectares(project.farm) : 0;
+  const activeWeatherTarget = selected ?? project.farm;
+  const activeWeatherKey = weatherKey(activeWeatherTarget);
+  const visibleWeather = activeWeatherKey === weatherTargetKey ? weather : null;
+  const weatherOverview = useMemo(() => {
+    if (!visibleWeather) return null;
+    const values = visibleWeather.days;
+    const sum = (selector: (day: WeatherForecast["days"][number]) => number | null) =>
+      values.reduce((total, day) => total + (selector(day) ?? 0), 0);
+    const available = (selector: (day: WeatherForecast["days"][number]) => number | null) =>
+      values.map(selector).filter((value): value is number => value != null);
+    const temperaturesMin = available((day) => day.temperatureMinC);
+    const temperaturesMax = available((day) => day.temperatureMaxC);
+    const probabilities = available((day) => day.precipitationProbabilityPct);
+    return {
+      rainMm: sum((day) => day.precipitationMm),
+      et0Mm: sum((day) => day.et0Mm),
+      minC: temperaturesMin.length ? Math.min(...temperaturesMin) : null,
+      maxC: temperaturesMax.length ? Math.max(...temperaturesMax) : null,
+      rainProbabilityPct: probabilities.length ? Math.max(...probabilities) : null,
+    };
+  }, [visibleWeather]);
 
   const startDrawing = (nextMode: Exclude<EditorMode, "move-field" | null>) => {
     if (nextMode === "draw-field" && !project.farm) {
@@ -542,12 +570,14 @@ export function TerritoryEditor() {
       return;
     }
     const point = centroid(shapePolygon(target)).geometry.coordinates as Coordinate;
+    const requestedTargetKey = weatherKey(target);
     setWeatherLoading(true);
     try {
       const response = await fetch(`/api/weather?latitude=${point[1]}&longitude=${point[0]}`);
       const body = (await response.json()) as WeatherForecast & { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Previsão indisponível");
       setWeather(body);
+      setWeatherTargetKey(requestedTargetKey);
       setNotice(`Previsão atualizada para o centro de ${target.title}.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Previsão indisponível");
@@ -624,15 +654,32 @@ export function TerritoryEditor() {
             </section>
           )}
 
-          <section className={styles.panel}>
-            <div className={styles.panelTitle}><div><h2>Tempo na área exata</h2><p>Centroide do {selected?.kind === "field" ? "talhão selecionado" : "perímetro da fazenda"}</p></div><button onClick={loadWeather} disabled={weatherLoading || !project.farm}>{weatherLoading ? "…" : "Atualizar"}</button></div>
-            {weather ? (
+          <section className={`${styles.panel} ${styles.weatherPanel}`}>
+            <div className={styles.panelTitle}><div><h2>Previsão meteorológica</h2><p>Ponto central do {selected?.kind === "field" ? "talhão selecionado" : "perímetro da fazenda"}</p></div><button onClick={loadWeather} disabled={weatherLoading || !project.farm}>{weatherLoading ? "Consultando…" : visibleWeather ? "Atualizar" : "Consultar"}</button></div>
+            {visibleWeather && weatherOverview ? (
               <>
-                <div className={styles.signals}>{weather.signals.map((signal) => <div key={signal.code} data-severity={signal.severity}><b>{signal.title}</b><span>{signal.detail}</span></div>)}</div>
-                <div className={styles.forecast}>{weather.days.map((day) => <div key={day.date}><b>{new Date(`${day.date}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "short" })}</b><span>{day.temperatureMinC}°–{day.temperatureMaxC}°</span><strong>{day.precipitationMm} mm</strong><small>{day.precipitationProbabilityPct}% chuva</small></div>)}</div>
-                <p className={styles.disclaimer}>{weather.disclaimer} Fonte: {weather.source}.</p>
+                <div className={styles.weatherLocation}><span>📍 {visibleWeather.location.latitude.toFixed(3)}, {visibleWeather.location.longitude.toFixed(3)}</span><span>Atualizada {new Date(visibleWeather.generatedAt).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}</span></div>
+                <div className={styles.weatherOverview}>
+                  <div><span>Chuva · 7 dias</span><strong>{weatherNumber(weatherOverview.rainMm, 1)} mm</strong></div>
+                  <div><span>Maior chance</span><strong>{weatherNumber(weatherOverview.rainProbabilityPct)}%</strong></div>
+                  <div><span>Faixa térmica</span><strong>{weatherNumber(weatherOverview.minC)}°–{weatherNumber(weatherOverview.maxC)}°</strong></div>
+                  <div><span>ET₀ · 7 dias</span><strong>{weatherNumber(weatherOverview.et0Mm, 1)} mm</strong></div>
+                </div>
+                <div className={styles.signals}>{visibleWeather.signals.map((signal) => <div key={signal.code} data-severity={signal.severity}><i aria-hidden="true">{signal.severity === "attention" ? "!" : signal.severity === "favorable" ? "✓" : "i"}</i><span><b>{signal.title}</b><small>{signal.detail}</small></span></div>)}</div>
+                <div className={styles.forecast} aria-label="Previsão para os próximos sete dias">{visibleWeather.days.map((day) => {
+                  const condition = describeWeatherCode(day.weatherCode);
+                  const rainProbability = day.precipitationProbabilityPct ?? 0;
+                  return <article key={day.date}>
+                    <header><span><b>{forecastDate(day.date, { weekday: "short" })}</b><small>{forecastDate(day.date, { day: "2-digit", month: "2-digit" })}</small></span><em title={condition.label}>{condition.icon}</em></header>
+                    <p>{condition.label}</p>
+                    <strong>{weatherNumber(day.temperatureMaxC)}° <span>{weatherNumber(day.temperatureMinC)}°</span></strong>
+                    <div className={styles.rainLine}><span style={{ width: `${Math.max(4, rainProbability)}%` }} /></div>
+                    <dl><div><dt>Chuva</dt><dd>{weatherNumber(day.precipitationMm, 1)} mm · {weatherNumber(day.precipitationProbabilityPct)}%</dd></div><div><dt>Rajada</dt><dd>{weatherNumber(day.windGustKmh)} km/h</dd></div><div><dt>ET₀</dt><dd>{weatherNumber(day.et0Mm, 1)} mm</dd></div></dl>
+                  </article>;
+                })}</div>
+                <p className={styles.disclaimer}><strong>Como interpretar:</strong> {visibleWeather.disclaimer} Fonte: {visibleWeather.source}; fuso {visibleWeather.location.timezone}.</p>
               </>
-            ) : <p className={styles.empty}>Selecione uma área e carregue a previsão de sete dias.</p>}
+            ) : <p className={styles.empty}>{weather && activeWeatherKey !== weatherTargetKey ? "A área selecionada mudou. Consulte novamente para usar a coordenada atual." : "Selecione uma área e consulte a previsão de sete dias."}</p>}
           </section>
         </aside>
       </section>
