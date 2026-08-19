@@ -80,7 +80,7 @@ describe("buildPlan", () => {
         { id: "B", areaHa: 100, priority: "second_crop" },
         { id: "A", areaHa: 100, priority: "second_crop" },
       ],
-      seedLots: [{ crop: "soybean", cycleDays: 90, availableAreaHa: 200 }],
+      seedLots: [{ id: "S90", crop: "soybean", cycleDays: 90, availableAreaHa: 200 }],
     };
     const generousDataset = {
       ...tightSeasonDataset,
@@ -105,6 +105,7 @@ describe("buildPlan", () => {
       priority: "second_crop" as const,
     }));
     const seedLots = [90, 100, 110, 120].map((cycleDays) => ({
+      id: `S${cycleDays}`,
       crop: "soybean" as const,
       cycleDays,
       availableAreaHa: 100,

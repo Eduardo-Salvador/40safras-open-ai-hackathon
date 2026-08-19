@@ -22,8 +22,8 @@ function operation(overrides: Partial<FarmOperationInput> = {}): FarmOperationIn
       { id: "B", areaHa: 100, priority: "soy_only" },
     ],
     seedLots: [
-      { crop: "soybean", cycleDays: 90, availableAreaHa: 100 },
-      { crop: "soybean", cycleDays: 120, availableAreaHa: 100 },
+      { id: "S90", crop: "soybean", cycleDays: 90, availableAreaHa: 100 },
+      { id: "S120", crop: "soybean", cycleDays: 120, availableAreaHa: 100 },
     ],
     secondCropTargetAreaHa: 100,
     finance: { soybeanMarginPerHa: 1000, cornMarginPerHa: 800 },
@@ -55,14 +55,14 @@ describe("generateCandidates", () => {
 
   it("falha claramente quando nenhum lote consegue atender os talhões", () => {
     const input = operation({
-      seedLots: [{ crop: "soybean", cycleDays: 90, availableAreaHa: 150 }],
+      seedLots: [{ id: "S90", crop: "soybean", cycleDays: 90, availableAreaHa: 150 }],
     });
     expect(() => generateCandidates(input)).toThrow(/nenhum candidato/);
   });
 
   it("rejeita ciclo fora do perfil de soja validado", () => {
     const input = operation({
-      seedLots: [{ crop: "soybean", cycleDays: 200, availableAreaHa: 200 }],
+      seedLots: [{ id: "S200", crop: "soybean", cycleDays: 200, availableAreaHa: 200 }],
     });
     expect(() => generateCandidates(input)).toThrow(/fora do perfil validado/);
   });
@@ -82,6 +82,7 @@ describe("generateCandidates", () => {
       priority: "second_crop" as const,
     }));
     const seedLots = [90, 100, 110, 120].map((cycleDays) => ({
+      id: `S${cycleDays}`,
       crop: "soybean" as const,
       cycleDays,
       availableAreaHa: 100,
@@ -101,7 +102,7 @@ describe("generateCandidates", () => {
     const candidates = generateCandidates(operation({
       fields,
       totalAreaHa: 100,
-      seedLots: [{ crop: "soybean", cycleDays: 100, availableAreaHa: 100 }],
+      seedLots: [{ id: "S100", crop: "soybean", cycleDays: 100, availableAreaHa: 100 }],
     }));
 
     expect(candidates).toHaveLength(24);
