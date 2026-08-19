@@ -25,6 +25,9 @@ import { connectRealtimeVoiceSession, type RealtimeVoiceController } from "@/lib
 type ClimateStatus = "fixture" | "loading" | "live" | "error";
 type InputMode = "voice" | "text" | "form";
 type JourneyStage = "report" | "territory" | "complete" | "review" | "confirm" | "plan";
+type NumberInput = number | "";
+type EditableField = { id: string; areaHa: NumberInput; priority: "second_crop" | "soy_only" | "" };
+type EditableSeedLot = { id: string; crop: "soybean"; cycleDays: NumberInput; availableAreaHa: NumberInput };
 
 const JOURNEY_STEPS: Array<{ id: JourneyStage; label: string }> = [
   { id: "report", label: "Contar" },
@@ -76,6 +79,7 @@ const SEED_LOTS: FarmOperationInput["seedLots"] = [
 ];
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const numberInput = (value: string): NumberInput => value === "" ? "" : Number(value);
 
 export function OperationForm() {
   const voiceControllerRef = useRef<RealtimeVoiceController | null>(null);
@@ -83,7 +87,7 @@ export function OperationForm() {
   const [voiceStatus, setVoiceStatus] = useState<"idle" | "connecting" | "listening" | "processing" | "ready" | "parsing" | "error">("idle");
   const [voiceTranscript, setVoiceTranscript] = useState("");
   const [voiceReview, setVoiceReview] = useState<string[]>([]);
-  const [naturalBrief, setNaturalBrief] = useState(PREPARED_BRIEF);
+  const [naturalBrief, setNaturalBrief] = useState("");
   const [journeyStage, setJourneyStage] = useState<JourneyStage>("report");
   const [draftSource, setDraftSource] = useState<InputMode>("voice");
   const [municipalityQuery, setMunicipalityQuery] = useState("Sorriso");
@@ -91,16 +95,16 @@ export function OperationForm() {
   const [dataset, setDataset] = useState<HistoricalDataset>(sorrisoMt41Seasons);
   const [climateStatus, setClimateStatus] = useState<ClimateStatus>("fixture");
 
-  const [totalAreaHa, setTotalAreaHa] = useState(850);
-  const [planterCount, setPlanterCount] = useState(1);
-  const [planterCapacityHaPerDay, setPlanterCapacityHaPerDay] = useState(45);
+  const [totalAreaHa, setTotalAreaHa] = useState<NumberInput>(850);
+  const [planterCount, setPlanterCount] = useState<NumberInput>(1);
+  const [planterCapacityHaPerDay, setPlanterCapacityHaPerDay] = useState<NumberInput>(45);
   const [startDate, setStartDate] = useState("2025-09-15");
-  const [secondCropTargetAreaHa, setSecondCropTargetAreaHa] = useState(580);
-  const [soybeanMarginPerHa, setSoybeanMarginPerHa] = useState(1850);
-  const [cornMarginPerHa, setCornMarginPerHa] = useState(1200);
-  const [operatingCostPerDay, setOperatingCostPerDay] = useState<number | "">("");
-  const [fields, setFields] = useState<FarmOperationInput["fields"]>(FIELDS);
-  const [seedLots, setSeedLots] = useState<FarmOperationInput["seedLots"]>(SEED_LOTS);
+  const [secondCropTargetAreaHa, setSecondCropTargetAreaHa] = useState<NumberInput>(580);
+  const [soybeanMarginPerHa, setSoybeanMarginPerHa] = useState<NumberInput>(1850);
+  const [cornMarginPerHa, setCornMarginPerHa] = useState<NumberInput>(1200);
+  const [operatingCostPerDay, setOperatingCostPerDay] = useState<NumberInput>("");
+  const [fields, setFields] = useState<EditableField[]>(FIELDS);
+  const [seedLots, setSeedLots] = useState<EditableSeedLot[]>(SEED_LOTS);
 
   const [plan, setPlan] = useState<PlanResult | null>(null);
   const [lastInput, setLastInput] = useState<FarmOperationInput | null>(null);
@@ -111,33 +115,32 @@ export function OperationForm() {
 
   function applyOperationDraft(draft: OperationDraft) {
     const place = [draft.municipalityQuery?.name, draft.municipalityQuery?.state].filter(Boolean).join(", ");
-    if (place) setMunicipalityQuery(place);
-    if (draft.totalAreaHa !== undefined) setTotalAreaHa(draft.totalAreaHa);
+    setMunicipalityQuery(place);
+    setTotalAreaHa(draft.totalAreaHa ?? "");
     if (draft.planterCapacityHaPerDay !== undefined) {
       setPlanterCount(1);
       setPlanterCapacityHaPerDay(draft.planterCapacityHaPerDay);
+    } else {
+      setPlanterCount("");
+      setPlanterCapacityHaPerDay("");
     }
-    if (draft.startDate) setStartDate(draft.startDate);
-    if (draft.secondCropTargetAreaHa !== undefined) setSecondCropTargetAreaHa(draft.secondCropTargetAreaHa);
-    if (draft.finance?.soybeanMarginPerHa !== undefined) setSoybeanMarginPerHa(draft.finance.soybeanMarginPerHa);
-    if (draft.finance?.cornMarginPerHa !== undefined) setCornMarginPerHa(draft.finance.cornMarginPerHa);
-    if (draft.finance?.operatingCostPerDay !== undefined) setOperatingCostPerDay(draft.finance.operatingCostPerDay);
+    setStartDate(draft.startDate ?? "");
+    setSecondCropTargetAreaHa(draft.secondCropTargetAreaHa ?? "");
+    setSoybeanMarginPerHa(draft.finance?.soybeanMarginPerHa ?? "");
+    setCornMarginPerHa(draft.finance?.cornMarginPerHa ?? "");
+    setOperatingCostPerDay(draft.finance?.operatingCostPerDay ?? "");
 
-    const completeFields = draft.fields.flatMap((field) => field.areaHa === undefined ? [] : [{
+    const extractedFields: EditableField[] = draft.fields.map((field) => ({
       id: field.id,
-      areaHa: field.areaHa,
-      priority: field.secondCropEligible === undefined
-        ? fields.find((current) => current.id === field.id)?.priority ?? "soy_only" as const
-        : field.secondCropEligible ? "second_crop" as const : "soy_only" as const,
-    }]);
-    if (completeFields.length > 0) setFields(completeFields);
+      areaHa: field.areaHa ?? "",
+      priority: field.secondCropEligible === undefined ? "" : field.secondCropEligible ? "second_crop" : "soy_only",
+    }));
+    setFields(extractedFields.length > 0 ? extractedFields : [{ id: "", areaHa: "", priority: "" }]);
 
-    const completeLots = draft.seedLots.flatMap((lot) =>
-      lot.crop !== "soybean" || lot.cycleDays === undefined || lot.availableAreaHa === undefined
-        ? []
-        : [{ id: lot.id, crop: "soybean" as const, cycleDays: lot.cycleDays, availableAreaHa: lot.availableAreaHa }],
-    );
-    if (completeLots.length > 0) setSeedLots(completeLots);
+    const extractedLots: EditableSeedLot[] = draft.seedLots
+      .filter((lot) => lot.crop === "soybean")
+      .map((lot) => ({ id: lot.id, crop: "soybean", cycleDays: lot.cycleDays ?? "", availableAreaHa: lot.availableAreaHa ?? "" }));
+    setSeedLots(extractedLots.length > 0 ? extractedLots : [{ id: "", crop: "soybean", cycleDays: "", availableAreaHa: "" }]);
     setVoiceReview([
       ...draft.missingFields.map((field) => `Falta confirmar: ${field}`),
       ...draft.ambiguities.map((item) => `Dado ambíguo: ${item}`),
@@ -174,7 +177,7 @@ export function OperationForm() {
       const controller = await connectRealtimeVoiceSession(crypto.randomUUID(), {
         onTranscript: (transcript) => {
           setVoiceTranscript((current) => current ? `${current} ${transcript}` : transcript);
-          setNaturalBrief((current) => current === PREPARED_BRIEF ? transcript : `${current} ${transcript}`);
+          setNaturalBrief((current) => current ? `${current} ${transcript}` : transcript);
           setVoiceStatus((current) => current === "processing" ? "ready" : current);
         },
         onError: () => {
@@ -274,22 +277,22 @@ export function OperationForm() {
     }
   }
 
-  function operationInput(): FarmOperationInput {
+  function operationInput(): unknown {
     return {
       municipality,
-      totalAreaHa,
+      totalAreaHa: totalAreaHa === "" ? undefined : totalAreaHa,
       // The planner contract receives the operation's total daily capacity.
       // The interface keeps the more familiar machine count + output per machine.
-      planterCapacityHaPerDay: planterCount * planterCapacityHaPerDay,
-      startDate,
+      planterCapacityHaPerDay: planterCount === "" || planterCapacityHaPerDay === "" ? undefined : planterCount * planterCapacityHaPerDay,
+      startDate: startDate || undefined,
       firstCrop: "soybean",
       secondCrop: "corn",
-      fields,
-      seedLots,
-      secondCropTargetAreaHa,
+      fields: fields.map((field) => ({ ...field, areaHa: field.areaHa === "" ? undefined : field.areaHa, priority: field.priority || undefined })),
+      seedLots: seedLots.map((lot) => ({ ...lot, cycleDays: lot.cycleDays === "" ? undefined : lot.cycleDays, availableAreaHa: lot.availableAreaHa === "" ? undefined : lot.availableAreaHa })),
+      secondCropTargetAreaHa: secondCropTargetAreaHa === "" ? undefined : secondCropTargetAreaHa,
       finance: {
-        soybeanMarginPerHa,
-        cornMarginPerHa,
+        soybeanMarginPerHa: soybeanMarginPerHa === "" ? undefined : soybeanMarginPerHa,
+        cornMarginPerHa: cornMarginPerHa === "" ? undefined : cornMarginPerHa,
         operatingCostPerDay: operatingCostPerDay === "" ? undefined : operatingCostPerDay,
       },
     };
@@ -301,7 +304,22 @@ export function OperationForm() {
     const parsed = FarmOperationInputSchema.safeParse(input);
     if (!parsed.success) {
       setPlan(null);
-      setError("Confira se todos os campos têm um número válido antes de continuar.");
+      const messages = parsed.error.issues.map((issue) => {
+        const path = issue.path.join(".");
+        if (issue.message === "sum of field areas must equal totalAreaHa") return "a soma das áreas dos talhões precisa ser igual à área total";
+        if (issue.message === "soybean seed availability must cover totalAreaHa") return "os lotes de soja precisam cobrir toda a área";
+        if (issue.message === "secondCropTargetAreaHa exceeds eligible field area") return "a meta de milho não pode superar a área marcada para soja e milho";
+        if (path === "totalAreaHa") return "preencha a área total";
+        if (path === "planterCapacityHaPerDay") return "preencha a quantidade e a capacidade das plantadeiras";
+        if (path === "startDate") return "preencha a data de início";
+        if (path === "secondCropTargetAreaHa") return "preencha a meta de milho";
+        if (path.startsWith("fields.")) return `confira ${path.replace("fields.", "talhão ")}`;
+        if (path.startsWith("seedLots.")) return `confira ${path.replace("seedLots.", "lote ")}`;
+        if (path === "finance.soybeanMarginPerHa") return "preencha a margem da soja nos valores financeiros";
+        if (path === "finance.cornMarginPerHa") return "preencha a margem do milho nos valores financeiros";
+        return `${path || "dados"}: preencha um valor válido`;
+      });
+      setError([...new Set(messages)].join("; "));
       return;
     }
 
@@ -443,6 +461,7 @@ export function OperationForm() {
                   <textarea
                     id="natural-brief"
                     value={naturalBrief}
+                    placeholder={PREPARED_BRIEF}
                     onChange={(event) => {
                       setNaturalBrief(event.target.value);
                       invalidateConfirmation();
@@ -551,9 +570,10 @@ export function OperationForm() {
                       id="target-area"
                       type="number"
                       min="0"
+                      placeholder="Ex.: 580"
                       value={secondCropTargetAreaHa}
                       onChange={(e) => {
-                        setSecondCropTargetAreaHa(Number(e.target.value));
+                        setSecondCropTargetAreaHa(numberInput(e.target.value));
                         invalidateConfirmation();
                       }}
                     />
@@ -564,9 +584,10 @@ export function OperationForm() {
                       id="total-area"
                       type="number"
                       min="1"
+                      placeholder="Ex.: 850"
                       value={totalAreaHa}
                       onChange={(e) => {
-                        setTotalAreaHa(Number(e.target.value));
+                        setTotalAreaHa(numberInput(e.target.value));
                         invalidateConfirmation();
                       }}
                     />
@@ -590,9 +611,10 @@ export function OperationForm() {
                       type="number"
                       min="1"
                       step="1"
+                      placeholder="Ex.: 1"
                       value={planterCount}
                       onChange={(e) => {
-                        setPlanterCount(Number(e.target.value));
+                        setPlanterCount(numberInput(e.target.value));
                         invalidateConfirmation();
                       }}
                     />
@@ -603,16 +625,17 @@ export function OperationForm() {
                       id="planter"
                       type="number"
                       min="1"
+                      placeholder="Ex.: 45"
                       value={planterCapacityHaPerDay}
                       onChange={(e) => {
-                        setPlanterCapacityHaPerDay(Number(e.target.value));
+                        setPlanterCapacityHaPerDay(numberInput(e.target.value));
                         invalidateConfirmation();
                       }}
                     />
                   </div>
                 </div>
                 <p className={detailsStyles.capacityNote} aria-live="polite">
-                  <strong>Capacidade total por dia:</strong> {planterCount * planterCapacityHaPerDay || 0} ha
+                  <strong>Capacidade total por dia:</strong> {planterCount === "" || planterCapacityHaPerDay === "" ? "—" : planterCount * planterCapacityHaPerDay} ha
                   <span>{planterCount === 1 ? "1 plantadeira" : `${planterCount} plantadeiras`} × {planterCapacityHaPerDay || 0} ha/dia</span>
                 </p>
               </section>
@@ -626,19 +649,20 @@ export function OperationForm() {
                   </div>
                 </div>
                 <ul className={detailsStyles.itemList} aria-label="Talhões informados">
-                  {fields.map((field) => (
-                    <li key={field.id} className={detailsStyles.itemCard}>
+                  {fields.map((field, index) => (
+                    <li key={`field-${index}`} className={detailsStyles.itemCard}>
                       <div>
-                        <strong>{field.id}</strong>
+                        <label>Talhão<input value={field.id} placeholder="Ex.: T-01" onChange={(event) => { setFields((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, id: event.target.value } : item)); invalidateConfirmation(); }} /></label>
                         <span>Confira área e uso na segunda safra</span>
                       </div>
                       <div className={detailsStyles.itemEditor}>
-                        <label>Área (ha)<input type="number" min="1" value={field.areaHa} onChange={(event) => { setFields((current) => current.map((item) => item.id === field.id ? { ...item, areaHa: Number(event.target.value) } : item)); invalidateConfirmation(); }} /></label>
-                        <label>Uso<select value={field.priority} onChange={(event) => { setFields((current) => current.map((item) => item.id === field.id ? { ...item, priority: event.target.value as "second_crop" | "soy_only" } : item)); invalidateConfirmation(); }}><option value="second_crop">soja e milho</option><option value="soy_only">só soja</option></select></label>
+                        <label>Área (ha)<input type="number" min="1" placeholder="Ex.: 320" value={field.areaHa} onChange={(event) => { setFields((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, areaHa: numberInput(event.target.value) } : item)); invalidateConfirmation(); }} /></label>
+                        <label>Uso<select value={field.priority} onChange={(event) => { setFields((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, priority: event.target.value as EditableField["priority"] } : item)); invalidateConfirmation(); }}><option value="">Selecione</option><option value="second_crop">soja e milho</option><option value="soy_only">só soja</option></select></label>
                       </div>
                     </li>
                   ))}
                 </ul>
+                <button type="button" className={styles.ctaSecondary} onClick={() => setFields((current) => [...current, { id: "", areaHa: "", priority: "" }])}>Adicionar talhão</button>
               </section>
 
               <section className={detailsStyles.formSection} aria-labelledby="seeds-title">
@@ -650,22 +674,23 @@ export function OperationForm() {
                   </div>
                 </div>
                 <ul className={detailsStyles.itemList} aria-label="Sementes informadas">
-                  {seedLots.map((seed) => (
-                    <li key={seed.id} className={detailsStyles.itemCard}>
+                  {seedLots.map((seed, index) => (
+                    <li key={`seed-${index}`} className={detailsStyles.itemCard}>
                       <div>
-                        <strong>{seed.id}</strong>
+                        <label>Lote<input value={seed.id} placeholder="Ex.: SOJA-98" onChange={(event) => { setSeedLots((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, id: event.target.value } : item)); invalidateConfirmation(); }} /></label>
                         <span>Confira ciclo e cobertura do lote</span>
                       </div>
                       <div className={detailsStyles.itemEditor}>
-                        <label>Ciclo (dias)<input type="number" min="1" value={seed.cycleDays} onChange={(event) => { setSeedLots((current) => current.map((item) => item.id === seed.id ? { ...item, cycleDays: Number(event.target.value) } : item)); invalidateConfirmation(); }} /></label>
-                        <label>Cobre (ha)<input type="number" min="1" value={seed.availableAreaHa} onChange={(event) => { setSeedLots((current) => current.map((item) => item.id === seed.id ? { ...item, availableAreaHa: Number(event.target.value) } : item)); invalidateConfirmation(); }} /></label>
+                        <label>Ciclo (dias)<input type="number" min="1" placeholder="Ex.: 98" value={seed.cycleDays} onChange={(event) => { setSeedLots((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, cycleDays: numberInput(event.target.value) } : item)); invalidateConfirmation(); }} /></label>
+                        <label>Cobre (ha)<input type="number" min="1" placeholder="Ex.: 580" value={seed.availableAreaHa} onChange={(event) => { setSeedLots((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, availableAreaHa: numberInput(event.target.value) } : item)); invalidateConfirmation(); }} /></label>
                       </div>
                     </li>
                   ))}
                 </ul>
+                <button type="button" className={styles.ctaSecondary} onClick={() => setSeedLots((current) => [...current, { id: "", crop: "soybean", cycleDays: "", availableAreaHa: "" }])}>Adicionar lote</button>
               </section>
 
-              <details className={detailsStyles.financeDetails}>
+              <details className={detailsStyles.financeDetails} open={draftSource === "voice" && (soybeanMarginPerHa === "" || cornMarginPerHa === "")}>
                 <summary>Valores para calcular o resultado em dinheiro</summary>
                 <p>Se precisar, ajuste estes números. Eles servem só para a estimativa do plano.</p>
                 <div className={detailsStyles.fieldGrid}>
@@ -674,9 +699,10 @@ export function OperationForm() {
                     <input
                       id="soy-margin"
                       type="number"
+                      placeholder="Ex.: 1850"
                       value={soybeanMarginPerHa}
                       onChange={(e) => {
-                        setSoybeanMarginPerHa(Number(e.target.value));
+                        setSoybeanMarginPerHa(numberInput(e.target.value));
                         invalidateConfirmation();
                       }}
                     />
@@ -686,9 +712,10 @@ export function OperationForm() {
                     <input
                       id="corn-margin"
                       type="number"
+                      placeholder="Ex.: 1200"
                       value={cornMarginPerHa}
                       onChange={(e) => {
-                        setCornMarginPerHa(Number(e.target.value));
+                        setCornMarginPerHa(numberInput(e.target.value));
                         invalidateConfirmation();
                       }}
                     />
@@ -805,7 +832,7 @@ export function OperationForm() {
             <TerritoryEditor embedded />
           </div>
           <SeasonStrip
-            totalAreaHa={fields.filter((f) => f.priority === "second_crop").reduce((s, f) => s + f.areaHa, 0)}
+            totalAreaHa={lastInput?.fields.filter((f) => f.priority === "second_crop").reduce((s, f) => s + f.areaHa, 0) ?? 0}
             seasons={plan.historicalOutcomes.map((o) => ({ label: o.season, areaHa: o.secondCropViableAreaHa }))}
             eyebrow="Como este plano se saiu"
             heading={`Veja o resultado nas 41 safras de ${municipality.name}/${municipality.state}.`}
