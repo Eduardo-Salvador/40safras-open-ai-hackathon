@@ -83,6 +83,34 @@ describe("geocodeMunicipality", () => {
     await expect(geocodeMunicipality("Santa Maria", fetchImpl)).rejects.toThrow(MunicipalityAmbiguityError);
   });
 
+  it("prefers the exact municipality over similarly named places", async () => {
+    const fetchImpl = mockFetch({
+      openMeteo: [
+        {
+          name: "Sorriso",
+          latitude: -12.5453,
+          longitude: -55.7217,
+          country_code: "BR",
+          admin1: "Mato Grosso",
+        },
+        {
+          name: "Sorriso Airport",
+          latitude: -12.48,
+          longitude: -55.67,
+          country_code: "BR",
+          admin1: "Mato Grosso",
+        },
+      ],
+      ibge: [{ id: 5107925, nome: "Sorriso" }],
+    });
+
+    await expect(geocodeMunicipality("Sorriso, MT", fetchImpl)).resolves.toMatchObject({
+      name: "Sorriso",
+      state: "MT",
+      ibgeCode: "5107925",
+    });
+  });
+
   it("reports a rate limit from Open-Meteo", async () => {
     const fetchImpl = mockFetch({ openMeteo: undefined });
     const limitedFetch = (async () => jsonResponse({ reason: "rate limit" }, 429)) as unknown as typeof fetch;

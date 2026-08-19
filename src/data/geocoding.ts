@@ -52,6 +52,17 @@ function resolveStateCode(admin1: string | undefined): string | undefined {
   return STATE_NAME_TO_UF[normalizeName(admin1)];
 }
 
+function municipalityNameFromQuery(query: string): string {
+  const beforeComma = query.split(",", 1)[0];
+  const normalized = normalizeName(beforeComma);
+  if (query.includes(",")) return normalized;
+
+  const parts = normalized.split(/\s+/);
+  const stateCodes = new Set(Object.values(STATE_NAME_TO_UF).map(normalizeName));
+  if (parts.length > 1 && stateCodes.has(parts.at(-1)!)) parts.pop();
+  return parts.join(" ");
+}
+
 /**
  * Resolves a free-text query to a canonical Brazilian municipality: name,
  * UF, coordinates (Open-Meteo Geocoding) cross-referenced against the
@@ -71,8 +82,13 @@ export async function geocodeMunicipality(query: string, fetchImpl: FetchFn = fe
     throw new GeocodingError(`no municipality found for "${query}"`);
   }
 
+  const requestedName = municipalityNameFromQuery(query);
+  const exactCandidates = brazilianCandidates.filter(
+    (candidate) => normalizeName(candidate.name) === requestedName,
+  );
+  const eligibleCandidates = exactCandidates.length > 0 ? exactCandidates : brazilianCandidates;
   const uniqueCandidates = new Map(
-    brazilianCandidates.map((candidate) => [`${normalizeName(candidate.name)}:${candidate.admin1 ?? ""}`, candidate]),
+    eligibleCandidates.map((candidate) => [`${normalizeName(candidate.name)}:${candidate.admin1 ?? ""}`, candidate]),
   );
   if (uniqueCandidates.size !== 1) {
     throw new MunicipalityAmbiguityError(`multiple Brazilian municipalities match "${query}"; include the UF`);
