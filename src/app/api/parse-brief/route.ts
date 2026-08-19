@@ -16,7 +16,14 @@ export async function POST(req: NextRequest) {
     draft: result.data,
     source: result.source,
     attempts: result.attempts,
-    ...(result.warning ? { warning: "structured parsing unavailable; review the editable recovery" } : {}),
+    ...(result.warning
+      ? {
+          warning:
+            result.source === "fixture"
+              ? "prepared offline fixture; review every field before confirmation"
+              : "structured parsing unavailable; review the editable recovery",
+        }
+      : {}),
     ...(result.source === "recovery" ? { originalText: parsed.data.text } : {}),
   });
 }

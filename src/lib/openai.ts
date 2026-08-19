@@ -4,11 +4,15 @@ import { z } from "zod";
 import {
   FieldEventDraftSchema,
   OperationDraftSchema,
+  PlanResultSchema,
   type FieldEventDraft,
   type OperationDraft,
+  type PlanResult,
 } from "@/domain/schemas";
+import { preparedFieldEventDraft, preparedOperationDraft } from "../../data/fixtures/ai";
 import { FIELD_EVENT_INSTRUCTIONS } from "@/prompts/field-event";
 import { OPERATION_BRIEF_INSTRUCTIONS } from "@/prompts/operation-brief";
+import { PLAN_EXPLANATION_INSTRUCTIONS } from "@/prompts/plan-explanation";
 
 const MODEL = process.env.OPENAI_MODEL ?? "gpt-5.6-terra";
 const MAX_ATTEMPTS = 2;
@@ -67,10 +71,18 @@ export type StructuredOutputRequester = (kind: StructuredOutputKind, text: strin
 
 export type ParseResult<T> = {
   data: T;
-  source: "openai" | "recovery";
+  source: "openai" | "fixture" | "recovery";
   attempts: number;
   warning?: string;
 };
+
+export type ExplanationResult = {
+  text: string;
+  source: "openai" | "deterministic";
+  warning?: string;
+};
+
+export type PlanExplanationRequester = (plan: PlanResult) => Promise<string>;
 
 export class OpenAIConfigurationError extends Error {}
 
@@ -218,6 +230,61 @@ function fieldEventRecovery(): FieldEventDraft {
   });
 }
 
+function numericTokens(text: string): string[] {
+  return text.match(/-?\d+(?:[.,]\d+)?/g) ?? [];
+}
+
+export function verifyExplanationNumbers(text: string, plan: PlanResult): boolean {
+  const allowed = new Set(numericTokens(JSON.stringify(plan)));
+  return numericTokens(text).every((token) => allowed.has(token));
+}
+
+export function deterministicPlanExplanation(plan: PlanResult): string {
+  return [
+    `O plano foi avaliado em ${plan.dataset.seasons} safras.`,
+    `A area de segunda safra no P20 e ${plan.metrics.secondCropAreaP20Ha} hectares, com ${plan.metrics.viableSeasons} safras viaveis.`,
+    `O resultado financeiro P20 e ${plan.metrics.financialP20} reais e a diferenca para o baseline e ${plan.metrics.differenceFromBaselineP20} reais.`,
+    "Esta e uma simulacao de prototipo e nao substitui ZARC ou orientacao de um agronomo.",
+  ].join(" ");
+}
+
+export const requestPlanExplanation: PlanExplanationRequester = async (plan) => {
+  const client = createClient();
+  const response = await client.responses.create({
+    model: MODEL,
+    input: [
+      { role: "system", content: PLAN_EXPLANATION_INSTRUCTIONS },
+      { role: "user", content: JSON.stringify(plan) },
+    ],
+  });
+  if (!response.output_text) throw new Error("OpenAI returned no plan explanation");
+  return response.output_text;
+};
+
+export async function explainPlan(
+  rawPlan: unknown,
+  requester: PlanExplanationRequester = requestPlanExplanation,
+): Promise<ExplanationResult> {
+  const plan = PlanResultSchema.parse(rawPlan);
+  try {
+    const text = await requester(plan);
+    if (!verifyExplanationNumbers(text, plan)) {
+      return {
+        text: deterministicPlanExplanation(plan),
+        source: "deterministic",
+        warning: "model explanation contained a number absent from PlanResult",
+      };
+    }
+    return { text, source: "openai" };
+  } catch (error) {
+    return {
+      text: deterministicPlanExplanation(plan),
+      source: "deterministic",
+      warning: error instanceof Error ? error.message : "plan explanation unavailable",
+    };
+  }
+}
+
 export async function parseOperationBrief(
   text: string,
   requester: StructuredOutputRequester = requestStructuredOutput,
@@ -229,6 +296,15 @@ export async function parseOperationBrief(
     requester,
   );
   if (!result.success) {
+    const fixture = preparedOperationDraft(text);
+    if (fixture) {
+      return {
+        data: fixture,
+        source: "fixture",
+        attempts: result.attempts,
+        warning: "OpenAI unavailable; prepared offline fixture used",
+      };
+    }
     return { data: operationRecovery(), source: "recovery", attempts: result.attempts, warning: result.warning };
   }
   return { data: normalizeOperationDraft(result.data), source: "openai", attempts: result.attempts };
@@ -245,6 +321,15 @@ export async function parseFieldEvent(
     requester,
   );
   if (!result.success) {
+    const fixture = preparedFieldEventDraft(text);
+    if (fixture) {
+      return {
+        data: fixture,
+        source: "fixture",
+        attempts: result.attempts,
+        warning: "OpenAI unavailable; prepared offline fixture used",
+      };
+    }
     return { data: fieldEventRecovery(), source: "recovery", attempts: result.attempts, warning: result.warning };
   }
   return { data: normalizeFieldEventDraft(result.data), source: "openai", attempts: result.attempts };
