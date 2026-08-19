@@ -34,8 +34,8 @@ force-push ou rebase em branch compartilhada.
 
 | Área | Único dono | Caminhos |
 |---|---|---|
-| frontend e assets | `Murilo` | `app/page.tsx`, `app/layout.tsx`, `app/globals.css`, `src/components/**`, `src/lib/sharing/**`, `tests/ui/**`, `tests/sharing.test.ts`, `public/**` |
-| backend, contratos, IA e plataforma | `Eduarco` | `app/api/**`, `app/chatgpt-auth.ts`, `src/domain/schemas.ts`, `src/lib/openai.ts`, `src/lib/realtime.ts`, `src/prompts/**`, `data/fixtures/contracts/**`, `data/fixtures/ai/**`, `tests/contracts.test.ts`, `tests/ai/**`, `pendencia.md`, `docs/exec-plans/**`, `docs/product-specs/MVP.md`, manifests/configs da raiz, `worker/**`, `.openai/**` |
+| frontend e assets | `Murilo` | `src/app/page.tsx`, `src/app/page.module.css`, `src/app/globals.css`, `src/components/**`, `src/lib/sharing/**`, `tests/ui/**`, `tests/sharing.test.ts`, `public/**` |
+| backend, contratos, IA e plataforma | `Eduarco` | `src/app/api/**`, `src/app/layout.tsx`, `src/domain/schemas.ts`, `src/lib/openai.ts`, `src/lib/realtime.ts`, `src/prompts/**`, `data/fixtures/contracts/**`, `data/fixtures/ai/**`, `tests/contracts.test.ts`, `tests/ai/**`, `pendencia.md`, `docs/exec-plans/**`, `docs/product-specs/MVP.md` e manifests/configs da raiz |
 | ingestão de dados | `Vitor` | `src/data/**`, `data/fixtures/municipalities/**`, `tests/data/**` |
 | motor analítico | `Pedro` | `src/domain/planner.ts`, `src/domain/simulator.ts`, `src/domain/metrics.ts`, `src/domain/finance.ts`, `src/domain/diff.ts`, `data/crops/**`, `tests/engine/**`, `tests/planner.test.ts` |
 

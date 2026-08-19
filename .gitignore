@@ -7,6 +7,6 @@ coverage/
 playwright-report/
 test-results/
 *.log
+*.tsbuildinfo
 .DS_Store
 Thumbs.db
-

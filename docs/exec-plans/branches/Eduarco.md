@@ -9,7 +9,7 @@
 - Read only: módulos de UI, ingestão e motor; consumir apenas exports públicos.
 - Exclusive write set: contratos, APIs, OpenAI/Realtime, prompts, fixtures/testes de
   contrato e IA, documentação operacional, manifests/configs, worker e hosting.
-- Must not change: `app/page.tsx`, estilos/componentes, `src/data/**` ou cálculos do domínio.
+- Must not change: `src/app/page.tsx`, estilos/componentes, `src/data/**` ou cálculos do domínio.
 - Inputs/contracts: MVP, eventos, drafts confirmados e módulos públicos de D1/E1/E2.
 - Deliverables: K0/K1; schemas Zod; fixtures; hash de contrato; APIs validadas; Responses;
   segredo curto Realtime/WebRTC; retry único; fallback rotulado; integração server-side.
