@@ -1,20 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #1c1712;
-  --bg-raised: #241d16;
-  --bg-raised-2: #2c231a;
-  --ink: #f2e9d8;
-  --ink-dim: #b9ad97;
-  --ink-faint: #82765f;
-  --soy: #9bc53d;
-  --soy-dim: #5c7a2e;
-  --corn: #e8b23d;
-  --corn-dim: #8a651f;
-  --risk: #c25a33;
-  --risk-dim: #6e3520;
-  --rule: rgba(242, 233, 216, 0.12);
-  --rule-strong: rgba(242, 233, 216, 0.24);
+  /* Papel cru, mata escura, ocre, azul-petróleo e argila. */
+  --bg: #f5ecd7;
+  --bg-raised: #fff8e9;
+  --bg-raised-2: #efe0c5;
+  --ink: #153526;
+  --ink-dim: #405d4d;
+  --ink-faint: #6d796c;
+  --soy: #234c39;
+  --soy-dim: #55755d;
+  --corn: #b8791c;
+  --corn-dim: #8d5b18;
+  --risk: #a6513b;
+  --risk-dim: #763b2e;
+  --rule: rgba(21, 53, 38, 0.15);
+  --rule-strong: rgba(21, 53, 38, 0.3);
 
   --font-display: "Bricolage Grotesque", ui-sans-serif, sans-serif;
   --font-body: "Public Sans", ui-sans-serif, sans-serif;
@@ -36,7 +37,7 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
@@ -44,11 +45,12 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   font-feature-settings: "ss01" 1;
+  line-height: 1.5;
 }
 
 ::selection {
   background: var(--soy);
-  color: #14110c;
+  color: #fff8e9;
 }
 
 :focus-visible {

@@ -14,11 +14,13 @@ Read this file first. It is a map, not the full project documentation.
 ## Read path
 
 1. Read `docs/exec-plans/active/HACKATHON_PLAN.md`.
-2. If you are orchestrating, decomposing work, or answering “what is pending?”, read
+2. Read `docs/SYSTEM_DESIGN.md` before proposing or implementing product behavior,
+   layouts, visible states, transitions, or UI/API boundaries.
+3. If you are orchestrating, decomposing work, or answering “what is pending?”, read
    `pendencia.md`; report unchecked ready work by dependency, not from chat memory.
-3. Read the task card assigned to you in `docs/exec-plans/TASK_GRAPH.yaml`.
-4. Read only the linked product, architecture, walkthrough, and harness sections.
-5. Inspect the exact files you own before editing.
+4. Read the task card assigned to you in `docs/exec-plans/TASK_GRAPH.yaml`.
+5. Read only the linked product, architecture, walkthrough, and harness sections.
+6. Inspect the exact files you own before editing.
 
 Use progressive disclosure. Do not load every document into every agent.
 
@@ -78,6 +80,7 @@ the spec and event rubric before the demo tag.
 
 ## Documentation map
 
+- Canonical product/interaction system design: `docs/SYSTEM_DESIGN.md`
 - Product: `docs/product-specs/MVP.md`
 - Plain-language project walkthrough: `docs/product-specs/PROJECT_WALKTHROUGH.md`
 - Canonical pending-work checklist: `pendencia.md`

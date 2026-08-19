@@ -1,10 +1,57 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./page.module.css";
-import { SeasonStrip } from "@/components/season-strip";
 import { OperationForm } from "@/components/operation-form";
 
-const TOTAL_AREA_HA = 850;
-
 export default function Home() {
+  const wizardRef = useRef<HTMLDivElement>(null);
+  const [wizardEngaged, setWizardEngaged] = useState(false);
+
+  const moveToWizard = useCallback((behavior: ScrollBehavior) => {
+    const wizard = wizardRef.current;
+
+    if (!wizard) {
+      return;
+    }
+
+    wizard.scrollIntoView({ behavior, block: "center", inline: "nearest" });
+    window.setTimeout(
+      () => wizard.focus({ preventScroll: true }),
+      behavior === "smooth" ? 420 : 0,
+    );
+  }, []);
+
+  const openWizard = useCallback(() => {
+    setWizardEngaged(true);
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    window.requestAnimationFrame(() => {
+      moveToWizard(reducedMotion ? "auto" : "smooth");
+    });
+  }, [moveToWizard]);
+
+  useEffect(() => {
+    if (window.location.hash !== "#operation-input") {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      setWizardEngaged(true);
+      moveToWizard("auto");
+    });
+  }, [moveToWizard]);
+
+  const handleCtaClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+
+    event.preventDefault();
+    window.history.pushState(null, "", "#operation-input");
+    openWizard();
+  };
+
   return (
     <div className={styles.page}>
       <div className={styles.container}>
@@ -12,57 +59,58 @@ export default function Home() {
           <span className={styles.wordmark}>
             <span>40</span>SAFRAS
           </span>
-          <span className={styles.navTag}>protótipo · hackathon</span>
+          <span className={styles.navTag}>protótipo para demonstração</span>
         </nav>
 
         <header className={styles.hero}>
-          <p className={styles.heroEyebrow}>Safra 2025/26 · soja → milho segunda safra</p>
+          <p className={styles.heroEyebrow}>Safra 2025/26 · soja e milho de segunda safra</p>
           <h1 className={styles.heroTitle}>
-            Fale sua operação. <em>Prove com 41 safras.</em>
+            Conte sobre sua lavoura. <em>Vamos juntos, passo a passo.</em>
           </h1>
           <p className={styles.heroSub}>
-            Descreva o município, a área e a plantadeira em português. O agente confirma
-            o que entendeu — e um motor determinístico testa a sequência contra 41 safras
-            climáticas reais antes de qualquer número aparecer na tela.
+            Conte o município, a área e a plantadeira do seu jeito. Primeiro organizamos
+            as informações; depois você confere e autoriza o cálculo. O plano só aparece
+            no final, depois de tudo confirmado.
           </p>
           <div className={styles.ctaRow}>
-            <button className={styles.ctaPrimary} type="button">
+            <a className={styles.ctaPrimary} href="#operation-input" onClick={handleCtaClick}>
               <span className={styles.micDot} aria-hidden="true" />
-              Falar agora
-            </button>
-            <button className={styles.ctaSecondary} type="button">
-              Usar texto
-            </button>
+              Começar agora
+            </a>
           </div>
           <p className={styles.heroNote}>
-            Isto é decisão de apoio, não orientação ZARC, agronômica, financeira,
-            de crédito ou de seguro.
+            Esta ferramenta ajuda a organizar a decisão. Ela não substitui orientação de
+            agrônomo, ZARC, crédito ou seguro.
           </p>
         </header>
 
-        <section className={styles.section}>
-          <SeasonStrip totalAreaHa={TOTAL_AREA_HA} />
-        </section>
-
-        <section className={styles.section}>
+        <section
+          className={`${styles.section} ${wizardEngaged ? styles.sectionEngaged : ""}`}
+          id="operation-input"
+        >
           <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>Briefing da operação</p>
-            <h2 className={styles.sectionTitle}>O que a IA confirma antes de calcular.</h2>
+            <p className={styles.eyebrow}>Sua lavoura</p>
+            <h2 className={styles.sectionTitle}>Comece contando sobre o seu plantio.</h2>
             <p className={styles.sectionSub}>
-              Hoje o formulário roda o motor determinístico local, com a fixture climática
-              de Sorriso/MT. A conversa por voz e a geocodificação ao vivo entram nas
-              próximas etapas do build.
+              Você pode falar ou digitar. Vamos preencher uma etapa de cada vez. Antes de
+              calcular, você confere tudo e confirma.
             </p>
           </div>
-
-          <OperationForm />
+          <div
+            aria-label="Etapa para contar sobre a lavoura"
+            className={styles.wizardFocusTarget}
+            ref={wizardRef}
+            tabIndex={-1}
+          >
+            <OperationForm />
+          </div>
         </section>
 
         <footer className={styles.footer}>
           <p className={styles.footerBoundary}>
-            Quarenta Safras é um protótipo de apoio à decisão. Não substitui o ZARC nem
-            constitui orientação agronômica, financeira, de crédito ou de seguro. A
-            resolução climática é regional (ERA5/Open-Meteo), não medição de campo.
+            Quarenta Safras é um protótipo para ajudar na decisão. Não substitui o ZARC,
+            o agrônomo, crédito ou seguro. As informações de clima são da região, não são
+            uma medição feita dentro da sua fazenda.
           </p>
           <p className={styles.footerMeta}>
             OpenAI Hackathon Brasil · Clima, Cidades e Agricultura

@@ -27,17 +27,18 @@ Antes de pedir áudio ou texto, a aplicação mostra a lista necessária:
 - meta de milho safrinha;
 - premissas financeiras, quando usadas.
 
-O produtor escolhe entre três entradas igualmente importantes:
+O primeiro contato prioriza uma ação dominante:
 
 ```text
-Falar
-Escrever livremente
-Preencher formulário
+Toque para falar
+
+Prefere digitar? Clique aqui
 ```
 
-Todos os modos atualizam o mesmo rascunho. É possível começar falando, corrigir no
-formulário e complementar por texto sem perder dados. O formulário escreve diretamente
-nos schemas; ele não precisa chamar IA.
+O segundo caminho revela `Escrever livremente` e `Preencher formulário`. Todos os modos
+atualizam o mesmo rascunho. É possível começar falando, corrigir no formulário e
+complementar por texto sem perder dados. O formulário escreve diretamente nos schemas;
+ele não precisa chamar IA.
 
 ### 2. A IA organiza voz e texto natural
 

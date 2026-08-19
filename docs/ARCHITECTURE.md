@@ -11,8 +11,12 @@ browser
   -> /api/climate ------------> archive API -> normalize/cache -> HistoricalDataset[41]
   -> /api/parse-brief --------> OpenAI Responses -> Zod validation
   -> /api/plan ---------------> deterministic planner -> PlanResult
+  -> voluntary save ----------> POST /api/auth/login { username, password }
+                               -> signed HttpOnly cookie (8h, single demo user)
+                               -> POST/GET /api/analyses -> .data/analyses.json
   -> /api/parse-event --------> OpenAI Responses -> Zod validation
-  -> /api/replan -------------> deterministic planner + diff -> ReplanResult
+  -> saved-plan replan -------> POST /api/analyses/:id/replan
+                               -> authenticated demo session -> planner + appended diff
   -> WhatsApp deep link ------> encoded deterministic message
 
 optional extension
@@ -221,3 +225,42 @@ type ReplanResult = {
 - The same deterministic message creates a Telegram share URL and Web Share payload.
 - Message numbers come only from plan/replan payloads.
 - Optional Telegram Bot sending remains behind an adapter and never blocks sharing.
+
+## Progressive-authentication and persistence boundary
+
+Authentication is not a precondition for `OperationDraft`, confirmation, climate loading,
+planning, or viewing the resulting `PlanResult`. The browser asks for identification only
+after the producer voluntarily chooses to save a completed result. Until then, any draft
+or result retained by the browser is a session-local convenience, not a persisted plan.
+
+The integration must reuse the contracts already implemented on `origin/Eduarco`, rather
+than introduce parallel frontend contracts:
+
+- `POST /api/auth/login` receives `{ username, password }`; the UI labels `username` as
+  “E-mail” but sends its unchanged value in the `username` property.
+- Successful login sets the signed `quarenta_safras_session` cookie with `HttpOnly`,
+  `SameSite=Lax`, path `/`, production `Secure`, and an eight-hour lifetime.
+- `GET /api/auth/session` returns the current demo login state; `POST /api/auth/logout`
+  clears that cookie.
+- Authenticated `POST` and `GET /api/analyses`, `GET /api/analyses/:id`, and
+  `POST /api/analyses/:id/replan` save, list, load, and replan the existing analysis
+  records. The UI reuses these endpoints after backend integration.
+
+The backend validates the signed cookie and the request schemas. Credentials come only
+from server environment variables `APP_LOGIN_USER` and `APP_LOGIN_PASSWORD`; the signing
+key is `SESSION_SECRET`. The browser never receives these values or creates its own
+session token. Raw audio and permanent credentials are never written to the analysis
+record or client logs.
+
+`FileAnalysisStore` persists the record in `.data/analyses.json` (or
+`ANALYSIS_STORE_PATH`). Each record contains an internal ID, title, timestamps, confirmed
+operation, dataset, deterministic plan, and an appended list of deterministic replan
+results. The saved plan remains the reference result and replan entries are appended to
+the record.
+
+This is deliberately a single-user demo boundary, not ownership or multi-tenant access:
+there is one configured login and no producer ID on an analysis record. Any user with the
+shared credentials can list and load the same analyses. The local file is not durable on
+serverless/ephemeral Vercel filesystems. Production retention, deletion/export,
+individual-account authorization, persistent database choice, and migration strategy are
+still pending; no production durability or producer isolation may be claimed.
