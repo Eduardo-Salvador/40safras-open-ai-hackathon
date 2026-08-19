@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ConfirmationError, ConfirmationGuard } from "@/lib/confirmation";
+import { ConfirmationGuard } from "@/lib/confirmation";
 
 function createHarness() {
   let now = Date.parse("2026-08-19T15:00:00.000Z");
@@ -103,7 +103,11 @@ describe("ConfirmationGuard", () => {
   });
 
   it("invalidates an earlier challenge when a new version is summarized", () => {
-    const { guard } = createHarness();
+    let tokenSequence = 0;
+    const guard = new ConfirmationGuard({
+      now: () => Date.parse("2026-08-19T15:00:00.000Z"),
+      tokenFactory: () => `test-token-${++tokenSequence}`,
+    });
     const first = guard.request({
       sessionId: "session-1",
       subject: "operation",

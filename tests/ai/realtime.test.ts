@@ -20,7 +20,7 @@ describe("Realtime session boundary", () => {
 
     const result = await mintRealtimeClientSecret(
       { sessionId: "demo-session" },
-      { apiKey: "sk-project-secret", model: "gpt-realtime-test", requester },
+      { apiKey: "project-key-test-only", model: "gpt-realtime-test", requester },
     );
 
     expect(result).toEqual({
@@ -28,12 +28,12 @@ describe("Realtime session boundary", () => {
       expiresAt: 1_800_000_000,
       model: "gpt-realtime-test",
     });
-    expect(JSON.stringify(result)).not.toContain("sk-project-secret");
+    expect(JSON.stringify(result)).not.toContain("project-key-test-only");
 
     const [url, init] = requester.mock.calls[0];
     expect(url).toBe("https://api.openai.com/v1/realtime/client_secrets");
     expect(init.headers).toMatchObject({
-      Authorization: "Bearer sk-project-secret",
+      Authorization: "Bearer project-key-test-only",
       "Content-Type": "application/json",
     });
     expect((init.headers as Record<string, string>)["OpenAI-Safety-Identifier"]).toMatch(/^[a-f0-9]{64}$/);
