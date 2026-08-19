@@ -22,7 +22,7 @@ import { SeasonStrip } from "./season-strip";
 import { TerritoryEditor } from "./territory/territory-editor";
 import { connectRealtimeVoiceSession, type RealtimeVoiceController } from "@/lib/realtime-client";
 
-type ClimateStatus = "fixture" | "loading" | "live" | "error";
+type ClimateStatus = "fixture" | "unresolved" | "loading" | "live" | "error";
 type InputMode = "voice" | "text" | "form";
 type JourneyStage = "report" | "territory" | "complete" | "review" | "confirm" | "plan";
 type NumberInput = number | "";
@@ -116,6 +116,7 @@ export function OperationForm() {
   function applyOperationDraft(draft: OperationDraft) {
     const place = [draft.municipalityQuery?.name, draft.municipalityQuery?.state].filter(Boolean).join(", ");
     setMunicipalityQuery(place);
+    setClimateStatus("unresolved");
     setTotalAreaHa(draft.totalAreaHa ?? "");
     if (draft.planterCapacityHaPerDay !== undefined) {
       setPlanterCount(1);
@@ -299,6 +300,33 @@ export function OperationForm() {
   }
 
   function handleReviewDraft(source: InputMode) {
+    const missing: string[] = [];
+    if (!municipalityQuery.trim()) missing.push("informe o município e o estado");
+    else if (source === "voice" && climateStatus === "unresolved") missing.push("clique em “Ver clima” para confirmar o município");
+    else if (source === "voice" && climateStatus === "error") missing.push("corrija o município ou tente “Ver clima” novamente");
+    if (totalAreaHa === "") missing.push("preencha a área total");
+    if (startDate === "") missing.push("preencha a data de início");
+    if (planterCount === "") missing.push("preencha a quantidade de plantadeiras");
+    if (planterCapacityHaPerDay === "") missing.push("preencha a capacidade de cada plantadeira");
+    if (secondCropTargetAreaHa === "") missing.push("preencha a meta de milho");
+    fields.forEach((field, index) => {
+      if (!field.id.trim()) missing.push(`preencha o nome do talhão ${index + 1}`);
+      if (field.areaHa === "") missing.push(`preencha a área do talhão ${index + 1}`);
+      if (!field.priority) missing.push(`selecione o uso do talhão ${index + 1}`);
+    });
+    seedLots.forEach((lot, index) => {
+      if (!lot.id.trim()) missing.push(`preencha o nome do lote ${index + 1}`);
+      if (lot.cycleDays === "") missing.push(`preencha o ciclo do lote ${index + 1}`);
+      if (lot.availableAreaHa === "") missing.push(`preencha a cobertura do lote ${index + 1}`);
+    });
+    if (soybeanMarginPerHa === "") missing.push("preencha a margem da soja em valores financeiros");
+    if (cornMarginPerHa === "") missing.push("preencha a margem do milho em valores financeiros");
+    if (missing.length > 0) {
+      setPlan(null);
+      setError(missing.join("; "));
+      return;
+    }
+
     const input = operationInput();
 
     const parsed = FarmOperationInputSchema.safeParse(input);
@@ -309,12 +337,22 @@ export function OperationForm() {
         if (issue.message === "sum of field areas must equal totalAreaHa") return "a soma das áreas dos talhões precisa ser igual à área total";
         if (issue.message === "soybean seed availability must cover totalAreaHa") return "os lotes de soja precisam cobrir toda a área";
         if (issue.message === "secondCropTargetAreaHa exceeds eligible field area") return "a meta de milho não pode superar a área marcada para soja e milho";
+        if (issue.message === "field IDs must be unique") return "os nomes dos talhões não podem se repetir";
+        if (issue.message === "seed lot IDs must be unique") return "os nomes dos lotes não podem se repetir";
         if (path === "totalAreaHa") return "preencha a área total";
         if (path === "planterCapacityHaPerDay") return "preencha a quantidade e a capacidade das plantadeiras";
         if (path === "startDate") return "preencha a data de início";
         if (path === "secondCropTargetAreaHa") return "preencha a meta de milho";
-        if (path.startsWith("fields.")) return `confira ${path.replace("fields.", "talhão ")}`;
-        if (path.startsWith("seedLots.")) return `confira ${path.replace("seedLots.", "lote ")}`;
+        if (path.startsWith("fields.")) {
+          const [, index = "0", field = "dados"] = path.split(".");
+          const label = field === "areaHa" ? "área" : field === "priority" ? "uso" : "nome";
+          return `confira ${label} do talhão ${Number(index) + 1}`;
+        }
+        if (path.startsWith("seedLots.")) {
+          const [, index = "0", field = "dados"] = path.split(".");
+          const label = field === "cycleDays" ? "ciclo" : field === "availableAreaHa" ? "cobertura" : "nome";
+          return `confira ${label} do lote ${Number(index) + 1}`;
+        }
         if (path === "finance.soybeanMarginPerHa") return "preencha a margem da soja nos valores financeiros";
         if (path === "finance.cornMarginPerHa") return "preencha a margem do milho nos valores financeiros";
         return `${path || "dados"}: preencha um valor válido`;
@@ -536,6 +574,7 @@ export function OperationForm() {
                       {climateStatus === "live" &&
                         `${municipality.name}/${municipality.state} · fonte: ${dataset.source} · ${dataset.cached ? "dados já guardados" : "consulta agora"}`}
                       {climateStatus === "fixture" && `${municipality.name}/${municipality.state} · dados de exemplo guardados neste aparelho`}
+                      {climateStatus === "unresolved" && "Confirme o município em “Ver clima” antes de avançar."}
                       {climateStatus === "loading" && "Buscando informações de clima da região…"}
                       {climateStatus === "error" && <span className={detailsStyles.riskNote}>Não foi possível buscar o clima agora. Vamos usar dados de exemplo de {sorrisoMt.name}/{sorrisoMt.state}.</span>}
                     </span>
