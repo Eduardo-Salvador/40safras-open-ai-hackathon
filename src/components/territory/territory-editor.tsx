@@ -192,6 +192,11 @@ export function TerritoryEditor({
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
+    const probe = document.createElement("canvas");
+    if (!probe.getContext("webgl2") && !probe.getContext("webgl")) {
+      setNotice("O mapa não está disponível neste navegador. A localização informada continua salva e você pode seguir.");
+      return;
+    }
     const startingLocation = initialLocationRef.current;
     const map = new maplibregl.Map({
       container: mapContainerRef.current,

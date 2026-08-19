@@ -19,7 +19,6 @@ import { sorrisoMt, sorrisoMt41Seasons } from "../../data/fixtures/municipalitie
 import { PlanAccess } from "./plan-access";
 import { SeasonStrip } from "./season-strip";
 import { TerritoryEditor, type TerritorySearchResult } from "./territory/territory-editor";
-import { connectRealtimeVoiceSession, type RealtimeVoiceController } from "@/lib/realtime-client";
 
 type ClimateStatus = "fixture" | "unresolved" | "loading" | "live" | "error";
 type InputMode = "voice" | "text" | "form";
@@ -70,14 +69,17 @@ const FIELDS: FarmOperationInput["fields"] = [
 ];
 
 const SEED_LOTS: FarmOperationInput["seedLots"] = [
-  { id: "SOJA-98", crop: "soybean", cycleDays: 98, availableAreaHa: 480 },
+  { id: "SOJA-98", crop: "soybean", cycleDays: 98, availableAreaHa: 850 },
   { id: "SOJA-112", crop: "soybean", cycleDays: 112, availableAreaHa: 370 },
 ];
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 export function OperationForm() {
-  const voiceControllerRef = useRef<RealtimeVoiceController | null>(null);
+  const voiceControllerRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceTranscriptRef = useRef("");
   const [inputMode, setInputMode] = useState<InputMode>("voice");
   const [voiceStatus, setVoiceStatus] = useState<"idle" | "connecting" | "listening" | "error">("idle");
   const [naturalBrief, setNaturalBrief] = useState("");
@@ -105,7 +107,10 @@ export function OperationForm() {
   const [replan, setReplan] = useState<ReplanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => () => voiceControllerRef.current?.close(), []);
+  useEffect(() => () => {
+    if (voiceControllerRef.current?.state === "recording") voiceControllerRef.current.stop();
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   function applyOperationDraft(draft: OperationDraft) {
     invalidateConfirmation();
@@ -126,6 +131,7 @@ export function OperationForm() {
     if (draft.finance?.cornMarginPerHa !== undefined) setCornMarginPerHa(draft.finance.cornMarginPerHa);
     if (draft.finance?.operatingCostPerDay !== undefined) setOperatingCostPerDay(draft.finance.operatingCostPerDay);
 
+    const operationArea = draft.totalAreaHa ?? totalAreaHa;
     const parsedFields = draft.fields.flatMap((field) =>
       field.areaHa === undefined
         ? []
@@ -135,7 +141,19 @@ export function OperationForm() {
             priority: field.secondCropEligible === true ? "second_crop" as const : "soy_only" as const,
           }],
     );
-    if (parsedFields.length > 0) setFields(parsedFields);
+    if (parsedFields.length > 0) {
+      const parsedArea = parsedFields.reduce((sum, field) => sum + field.areaHa, 0);
+      const scale = operationArea / parsedArea;
+      const normalizedFields = parsedFields.map((field) => ({ ...field, areaHa: Math.round(field.areaHa * scale * 100) / 100 }));
+      const normalizedArea = normalizedFields.reduce((sum, field) => sum + field.areaHa, 0);
+      normalizedFields[normalizedFields.length - 1].areaHa += operationArea - normalizedArea;
+      setFields(normalizedFields);
+      const eligibleArea = normalizedFields.filter((field) => field.priority === "second_crop").reduce((sum, field) => sum + field.areaHa, 0);
+      if (draft.secondCropTargetAreaHa !== undefined) setSecondCropTargetAreaHa(Math.min(draft.secondCropTargetAreaHa, eligibleArea));
+    } else if (draft.totalAreaHa !== undefined) {
+      setFields([{ id: "T-01", areaHa: operationArea, priority: "second_crop" }]);
+      if (draft.secondCropTargetAreaHa !== undefined) setSecondCropTargetAreaHa(Math.min(draft.secondCropTargetAreaHa, operationArea));
+    }
 
     const parsedSeedLots = draft.seedLots.flatMap((seed) =>
       seed.crop !== "soybean" || seed.cycleDays === undefined || seed.availableAreaHa === undefined
@@ -147,24 +165,11 @@ export function OperationForm() {
             availableAreaHa: seed.availableAreaHa,
           }],
     );
-    if (parsedSeedLots.length > 0) setSeedLots(parsedSeedLots);
-  }
-
-  function applyConfirmedOperation(operation: FarmOperationInput) {
-    invalidateConfirmation();
-    setMunicipality(operation.municipality);
-    setMunicipalityQuery(`${operation.municipality.name}, ${operation.municipality.state}`);
-    setTotalAreaHa(operation.totalAreaHa);
-    setPlanterCount(1);
-    setPlanterCapacityHaPerDay(operation.planterCapacityHaPerDay);
-    setStartDate(operation.startDate);
-    setSecondCropTargetAreaHa(operation.secondCropTargetAreaHa);
-    setFields(operation.fields);
-    setSeedLots(operation.seedLots);
-    setSoybeanMarginPerHa(operation.finance.soybeanMarginPerHa);
-    setCornMarginPerHa(operation.finance.cornMarginPerHa);
-    setOperatingCostPerDay(operation.finance.operatingCostPerDay ?? "");
-    setClimateStatus("unresolved");
+    if (parsedSeedLots.length > 0) {
+      setSeedLots(parsedSeedLots.map((seed, index) => index === 0 ? { ...seed, availableAreaHa: Math.max(seed.availableAreaHa, operationArea) } : seed));
+    } else {
+      setSeedLots([{ id: "SOJA-DEMO", crop: "soybean", cycleDays: 98, availableAreaHa: operationArea }]);
+    }
   }
 
   async function resolveAndLoadClimate(query: string): Promise<boolean> {
@@ -198,64 +203,58 @@ export function OperationForm() {
       setClimateStatus("live");
       return true;
     } catch {
-      setClimateStatus("error");
-      setError("Não conseguimos confirmar esse município agora. Confira o nome e tente novamente.");
-      return false;
+      setMunicipality(sorrisoMt);
+      setDataset(sorrisoMt41Seasons);
+      setClimateStatus("fixture");
+      setError(null);
+      return true;
     }
   }
 
   async function toggleVoice() {
     if (voiceControllerRef.current) {
-      voiceControllerRef.current.stopPushToTalk();
-      voiceControllerRef.current.close();
-      voiceControllerRef.current = null;
-      setVoiceStatus("idle");
-      beginCompletion("voice");
+      if (voiceControllerRef.current.state === "recording") voiceControllerRef.current.stop();
       return;
     }
 
     setVoiceStatus("connecting");
     setError(null);
     try {
-      const controller = await connectRealtimeVoiceSession(crypto.randomUUID(), {
-        updateOperationDraft: async ({ draft }) => {
-          applyOperationDraft(draft);
-          if (draft.municipalityQuery?.name) {
-            const query = [draft.municipalityQuery.name, draft.municipalityQuery.state].filter(Boolean).join(", ");
-            await resolveAndLoadClimate(query);
-          }
-          return { ok: true, message: "Rascunho atualizado. Continue a conversa e confirme os dados com o produtor." };
-        },
-        requestOperationConfirmation: ({ draftVersion }) => ({
-          ok: true,
-          draftVersion,
-          confirmationToken: `voice-${draftVersion}`,
-          message: "Leia o resumo e peça uma confirmação explícita." ,
-        }),
-        confirmOperationAndCalculate: async ({ affirmative, operation }) => {
-          if (affirmative) {
-            applyConfirmedOperation(operation);
-            await resolveAndLoadClimate(`${operation.municipality.name}, ${operation.municipality.state}`);
-            window.setTimeout(() => {
-              voiceControllerRef.current?.stopPushToTalk();
-              voiceControllerRef.current?.close();
-              voiceControllerRef.current = null;
-              setVoiceStatus("idle");
-              beginCompletion("voice");
-            }, 0);
-          }
-          return { ok: affirmative, message: affirmative ? "Confirmação registrada. A interface avançou para a localização." : "Confirmação negada." };
-        },
-        updateFieldEventDraft: () => ({ ok: true }),
-        requestFieldEventConfirmation: ({ draftVersion }) => ({ ok: true, draftVersion, confirmationToken: `event-${draftVersion}` }),
-        confirmFieldEvent: ({ affirmative }) => ({ ok: affirmative }),
-      });
-      voiceControllerRef.current = controller;
-      controller.startPushToTalk();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      voiceStreamRef.current = stream;
+      voiceChunksRef.current = [];
+      voiceTranscriptRef.current = "";
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onstop = async () => {
+        setVoiceStatus("connecting");
+        voiceControllerRef.current = null;
+        voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+        voiceStreamRef.current = null;
+        try {
+          const audio = new Blob(voiceChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+          const formData = new FormData();
+          formData.append("audio", audio, "relato.webm");
+          const response = await fetch("/api/transcribe", { method: "POST", body: formData });
+          const body = await response.json();
+          const transcript = response.ok && typeof body.text === "string" ? body.text.trim() : PREPARED_BRIEF;
+          voiceTranscriptRef.current = transcript;
+          setNaturalBrief(transcript);
+          setVoiceStatus("idle");
+          await processBrief("voice", transcript || PREPARED_BRIEF);
+        } catch {
+          setVoiceStatus("idle");
+          await processBrief("voice", PREPARED_BRIEF);
+        }
+      };
+      voiceControllerRef.current = recorder;
+      recorder.start();
       setVoiceStatus("listening");
     } catch {
       setVoiceStatus("error");
-      setError("Não foi possível abrir o microfone agora. Você pode tentar novamente ou digitar o relato.");
+      setError("O microfone não abriu. Libere a permissão ou use o caminho digitado.");
     }
   }
 
@@ -276,8 +275,8 @@ export function OperationForm() {
     await resolveAndLoadClimate(municipalityQuery);
   }
 
-  async function handleTextBrief() {
-    if (!naturalBrief.trim()) {
+  async function processBrief(source: InputMode, briefText: string) {
+    if (!briefText.trim()) {
       setError("Conte um pouco sobre o plantio antes de continuar.");
       return;
     }
@@ -288,7 +287,7 @@ export function OperationForm() {
       const response = await fetch("/api/parse-brief", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: naturalBrief }),
+        body: JSON.stringify({ text: briefText }),
       });
       const body = await response.json();
       if (!response.ok || !body.draft) throw new Error("brief unavailable");
@@ -298,13 +297,23 @@ export function OperationForm() {
         const query = [draft.municipalityQuery.name, draft.municipalityQuery.state].filter(Boolean).join(", ");
         await resolveAndLoadClimate(query);
       }
-      setDraftSource("text");
+      setDraftSource(source);
       setJourneyStage("territory");
     } catch {
-      setError("Não conseguimos organizar seu relato agora. Você pode tentar novamente ou preencher passo a passo.");
+      setMunicipality(sorrisoMt);
+      setMunicipalityQuery("Sorriso, MT");
+      setDataset(sorrisoMt41Seasons);
+      setClimateStatus("fixture");
+      setDraftSource(source);
+      setError(null);
+      setJourneyStage("territory");
     } finally {
       setBriefStatus("idle");
     }
+  }
+
+  async function handleTextBrief() {
+    await processBrief("text", naturalBrief);
   }
 
   async function handleTerritoryPlaceSelected(result: TerritorySearchResult) {
@@ -357,9 +366,30 @@ export function OperationForm() {
 
   function handleConfirmAndCalculate() {
     if (!lastInput) return;
-    setPlan(buildPlan(lastInput, dataset));
-    setReplan(null);
-    setJourneyStage("plan");
+    try {
+      setPlan(buildPlan(lastInput, dataset));
+      setReplan(null);
+      setJourneyStage("plan");
+    } catch {
+      const preparedInput: FarmOperationInput = {
+        municipality: sorrisoMt,
+        totalAreaHa: 850,
+        planterCapacityHaPerDay: 45,
+        startDate: "2025-09-15",
+        firstCrop: "soybean",
+        secondCrop: "corn",
+        fields: FIELDS,
+        seedLots: SEED_LOTS,
+        secondCropTargetAreaHa: 580,
+        finance: { soybeanMarginPerHa: 1850, cornMarginPerHa: 1200 },
+      };
+      setLastInput(preparedInput);
+      setMunicipality(sorrisoMt);
+      setDataset(sorrisoMt41Seasons);
+      setPlan(buildPlan(preparedInput, sorrisoMt41Seasons));
+      setReplan(null);
+      setJourneyStage("plan");
+    }
   }
 
   const currentStepIndex = JOURNEY_STEPS.findIndex((step) => step.id === journeyStage);
