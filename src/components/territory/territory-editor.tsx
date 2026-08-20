@@ -108,6 +108,7 @@ type TerritoryEditorProps = {
   initialSearch?: string;
   initialLocation?: { latitude: number; longitude: number };
   onLocationSelected?: (result: TerritorySearchResult) => void | Promise<void>;
+  onFarmAreaChange?: (areaHa: number | null) => void;
 };
 
 export function TerritoryEditor({
@@ -117,6 +118,7 @@ export function TerritoryEditor({
   initialSearch = "",
   initialLocation,
   onLocationSelected,
+  onFarmAreaChange,
 }: TerritoryEditorProps) {
   const initialLocationRef = useRef(initialLocation);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -438,6 +440,11 @@ export function TerritoryEditor({
 
   const selected = useMemo(() => getSelected(project, selectedId), [project, selectedId]);
   const farmArea = project.farm ? hectares(project.farm) : 0;
+
+  useEffect(() => {
+    onFarmAreaChange?.(project.farm ? farmArea : null);
+  }, [farmArea, onFarmAreaChange, project.farm]);
+
   const activeWeatherTarget = selected ?? project.farm;
   const activeWeatherKey = weatherKey(activeWeatherTarget);
   const visibleWeather = activeWeatherKey === weatherTargetKey ? weather : null;

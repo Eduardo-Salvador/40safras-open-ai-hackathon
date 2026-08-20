@@ -94,6 +94,7 @@ export function OperationForm() {
   const [municipality, setMunicipality] = useState<Municipality>(sorrisoMt);
   const [dataset, setDataset] = useState<HistoricalDataset>(sorrisoMt41Seasons);
   const [climateStatus, setClimateStatus] = useState<ClimateStatus>("fixture");
+  const [mappedAreaHa, setMappedAreaHa] = useState<number | null>(null);
 
   const [totalAreaHa, setTotalAreaHa] = useState<NumberInput>(850);
   const [planterCount, setPlanterCount] = useState<NumberInput>(1);
@@ -383,6 +384,16 @@ export function OperationForm() {
   }
 
   const currentStepIndex = JOURNEY_STEPS.findIndex((step) => step.id === journeyStage);
+  const displayedPlan = replan?.after ?? plan;
+  const roundedMappedAreaHa = mappedAreaHa === null ? null : Math.round(mappedAreaHa * 100) / 100;
+  const declaredAreaHa = totalAreaHa === "" ? null : totalAreaHa;
+  const mappedAreaDifferenceHa = roundedMappedAreaHa === null || declaredAreaHa === null
+    ? null
+    : roundedMappedAreaHa - declaredAreaHa;
+  const mappedAreaDifferencePct = mappedAreaDifferenceHa === null || declaredAreaHa === null || declaredAreaHa === 0
+    ? null
+    : Math.abs(mappedAreaDifferenceHa) / declaredAreaHa * 100;
+  const cautiousZeroSeasons = displayedPlan?.historicalOutcomes.filter((outcome) => outcome.secondCropViableAreaHa === 0).length ?? 0;
 
   function goBack() {
     const previousStep = JOURNEY_STEPS[currentStepIndex - 1];
@@ -527,7 +538,39 @@ export function OperationForm() {
               </div>
               <span className={styles.stepBadge}>mapa editável</span>
             </div>
-            <TerritoryEditor embedded onContinue={() => setJourneyStage("complete")} />
+            <TerritoryEditor
+              embedded
+              initialSearch={municipalityQuery}
+              onFarmAreaChange={setMappedAreaHa}
+              onContinue={() => setJourneyStage("complete")}
+            />
+            {roundedMappedAreaHa !== null && (
+              <div className={detailsStyles.capacityNote} aria-live="polite">
+                <strong>Mapa: {roundedMappedAreaHa.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha.</strong>
+                {mappedAreaDifferenceHa === null ? (
+                  <span>A área informada está vazia. Você pode usar a medição do perímetro.</span>
+                ) : Math.abs(mappedAreaDifferenceHa) < 0.01 ? (
+                  <span>A medição coincide com a área informada.</span>
+                ) : (
+                  <span>
+                    Informado: {declaredAreaHa?.toLocaleString("pt-BR")} ha · diferença de {Math.abs(mappedAreaDifferenceHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha
+                    {mappedAreaDifferencePct === null ? "" : ` (${mappedAreaDifferencePct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%)`}.
+                  </span>
+                )}
+                {(mappedAreaDifferenceHa === null || Math.abs(mappedAreaDifferenceHa) >= 0.01) && (
+                  <button
+                    type="button"
+                    className={styles.ctaSecondary}
+                    onClick={() => {
+                      setTotalAreaHa(roundedMappedAreaHa);
+                      invalidateConfirmation();
+                    }}
+                  >
+                    Usar área medida no mapa
+                  </button>
+                )}
+              </div>
+            )}
             <div className={styles.journeyActions}>
               <button type="button" className={styles.ctaSecondary} onClick={goBack}>Voltar</button>
               <button type="button" className={styles.submit} onClick={() => setJourneyStage("complete")}>Continuar com esta localização →</button>
@@ -856,12 +899,12 @@ export function OperationForm() {
           </div>
         )}
 
-        {journeyStage === "plan" && plan && (
+        {journeyStage === "plan" && plan && displayedPlan && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
             <div className={styles.modeHeader}>
               <div>
-                <p className={styles.tableLabel}>Seu plano está pronto</p>
-                <p className={styles.modeHint}>Ele foi montado com os dados que você confirmou e o clima mostrado nesta tela.</p>
+                <p className={styles.tableLabel}>{replan ? "Plano atualizado" : "Seu plano está pronto"}</p>
+                <p className={styles.modeHint}>{replan ? "Os valores e a sequência abaixo já consideram o imprevisto confirmado." : "Ele foi montado com os dados que você confirmou e o clima mostrado nesta tela."}</p>
               </div>
               <span className={styles.stepBadge}>pronto para usar</span>
             </div>
@@ -872,7 +915,7 @@ export function OperationForm() {
           </div>
           <SeasonStrip
             totalAreaHa={lastInput?.fields.filter((f) => f.priority === "second_crop").reduce((s, f) => s + f.areaHa, 0) ?? 0}
-            seasons={plan.historicalOutcomes.map((o) => ({ label: o.season, areaHa: o.secondCropViableAreaHa }))}
+            seasons={displayedPlan.historicalOutcomes.map((o) => ({ label: o.season, areaHa: o.secondCropViableAreaHa }))}
             eyebrow="Como este plano se saiu"
             heading={`Veja o resultado nas 41 safras de ${municipality.name}/${municipality.state}.`}
             tag={dataset.real ? `cálculo pelas mesmas regras · ${dataset.source}` : "cálculo com dados de exemplo"}
@@ -890,7 +933,7 @@ export function OperationForm() {
                 </tr>
               </thead>
               <tbody>
-                {plan.sequence.map((s) => (
+                {displayedPlan.sequence.map((s) => (
                   <tr key={s.fieldId}>
                     <td>{s.fieldId}</td>
                     <td>{s.startDate}</td>
@@ -904,25 +947,38 @@ export function OperationForm() {
 
           <div className={stripStyles.metrics} style={{ marginTop: 0 }}>
             <div className={stripStyles.metric}>
-              <span className={stripStyles.metricValue}>{currency.format(plan.metrics.financialP20)}</span>
+              <span className={stripStyles.metricValue}>{currency.format(displayedPlan.metrics.financialP20)}</span>
               <span className={stripStyles.metricLabel}>valor no cenário mais cauteloso entre as 41 safras</span>
             </div>
             <div className={stripStyles.metric}>
-              <span className={stripStyles.metricValue}>{currency.format(plan.metrics.financialMedian)}</span>
+              <span className={stripStyles.metricValue}>{currency.format(displayedPlan.metrics.financialMedian)}</span>
               <span className={stripStyles.metricLabel}>valor do meio das 41 safras</span>
             </div>
             <div className={stripStyles.metric}>
-              <span className={stripStyles.metricValue}>{currency.format(plan.metrics.differenceFromBaselineP20)}</span>
+              <span className={stripStyles.metricValue}>{currency.format(displayedPlan.metrics.differenceFromBaselineP20)}</span>
               <span className={stripStyles.metricLabel}>ganho ou perda no cenário cauteloso, comparado à ordem de sempre</span>
             </div>
           </div>
+
+          {displayedPlan.metrics.secondCropAreaP20Ha === 0 && (
+            <div className={styles.submitNote}>
+              <strong>Por que o cenário cauteloso mostra zero?</strong>{" "}
+              O P20 é a 9ª menor resposta entre as 41 safras. Neste cálculo, {cautiousZeroSeasons} safras ficaram sem janela viável para o milho; por isso área, percentual e o resultado cauteloso podem chegar a zero. Isso é um resultado do histórico, não um campo ausente.
+            </div>
+          )}
+
+          {displayedPlan.metrics.differenceFromBaselineP20 === 0 && (
+            <div className={styles.submitNote}>
+              <strong>Ganho ou perda igual a zero:</strong> no P20, a ordem recomendada empatou com a ordem usual. A diferença ainda pode aparecer no cenário mediano e na quantidade de safras viáveis.
+            </div>
+          )}
 
           <div className={styles.submitNote}>
             <strong>Importante:</strong> {PLAN_NOTES.join(" ")}
           </div>
 
           <a
-            href={buildWhatsAppShareUrl(buildPlanWhatsAppMessage(municipality, plan))}
+            href={buildWhatsAppShareUrl(buildPlanWhatsAppMessage(municipality, displayedPlan))}
             target="_blank"
             rel="noopener noreferrer"
             className={styles.ctaSecondary}

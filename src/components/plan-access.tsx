@@ -26,29 +26,6 @@ type Flow = "idle" | "checking" | "login" | "saving" | "record" | "review" | "re
 
 type SessionResponse = { authenticated: boolean; username?: string };
 
-type SpeechResultEvent = {
-  resultIndex: number;
-  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
-};
-
-type SpeechRecognitionLike = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((event: SpeechResultEvent) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-
-type SpeechWindow = Window & {
-  SpeechRecognition?: SpeechRecognitionConstructor;
-  webkitSpeechRecognition?: SpeechRecognitionConstructor;
-};
-
 function createBrowserId(prefix: string): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return `${prefix}-${crypto.randomUUID()}`;
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -61,7 +38,9 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
 export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessProps) {
   const formId = useId();
   const sessionId = useRef(createBrowserId("field-event"));
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const [flow, setFlow] = useState<Flow>("idle");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -71,11 +50,15 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
   const [blockedFieldIds, setBlockedFieldIds] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [speechUnavailable, setSpeechUnavailable] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [latestReplan, setLatestReplan] = useState<ReplanResult | null>(null);
 
-  useEffect(() => () => recognitionRef.current?.stop(), []);
+  useEffect(() => () => {
+    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   async function savePlan(): Promise<SavedAnalysis | null> {
     setFlow("saving");
@@ -151,48 +134,55 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
     );
   }
 
-  function startListening() {
-    const speechWindow = window as SpeechWindow;
-    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
-
-    if (!Recognition) {
+  async function startListening() {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setSpeechUnavailable(true);
       setMessage("Este navegador não conseguiu ouvir sua fala. Você pode escrever o imprevisto logo abaixo.");
       return;
     }
-
-    const recognition = new Recognition();
-    const transcriptBeforeRecording = notes.trim();
-    let finalTranscript = "";
-
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "pt-BR";
-    recognition.onresult = (event) => {
-      let interimTranscript = "";
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const phrase = event.results[index][0].transcript.trim();
-        if (event.results[index].isFinal) finalTranscript = `${finalTranscript} ${phrase}`.trim();
-        else interimTranscript = `${interimTranscript} ${phrase}`.trim();
-      }
-      setNotes([transcriptBeforeRecording, finalTranscript, interimTranscript].filter(Boolean).join(" "));
-    };
-    recognition.onerror = () => {
-      setIsListening(false);
-      setMessage("Não conseguimos ouvir bem. Tente novamente ou escreva o que aconteceu.");
-    };
-    recognition.onend = () => setIsListening(false);
-
-    recognitionRef.current = recognition;
-    setMessage("Pode falar. Conte o que aconteceu, quando começou e quais talhões foram afetados.");
-    setIsListening(true);
-    recognition.start();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      streamRef.current = stream;
+      recorderRef.current = recorder;
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = async () => {
+        setIsListening(false);
+        setIsTranscribing(true);
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        recorderRef.current = null;
+        try {
+          const audio = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+          const formData = new FormData();
+          formData.append("audio", audio, "imprevisto.webm");
+          const response = await fetch("/api/transcribe", { method: "POST", body: formData });
+          const body = await readJson(response);
+          const transcript = typeof body.text === "string" ? body.text.trim() : "";
+          if (!response.ok || !transcript) throw new Error("empty transcription");
+          setNotes((current) => [current.trim(), transcript].filter(Boolean).join(" "));
+          setMessage("Transcrição pronta. Confira o relato antes de refazer o plano.");
+        } catch {
+          setSpeechUnavailable(true);
+          setMessage("Não conseguimos transcrever este áudio. Você pode tentar novamente ou escrever o imprevisto.");
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+      recorder.start();
+      setMessage("Pode falar. Conte o que aconteceu, quando começou e quais talhões foram afetados.");
+      setIsListening(true);
+    } catch {
+      setSpeechUnavailable(true);
+      setMessage("O microfone não abriu. Libere a permissão ou escreva o imprevisto.");
+    }
   }
 
   function stopListening() {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setIsListening(false);
+    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   }
 
   function reviewRecording() {
@@ -360,10 +350,11 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
             className={styles.voiceAction}
             data-listening={isListening ? "true" : "false"}
             onClick={isListening ? stopListening : startListening}
+            disabled={isTranscribing}
           >
             <span className={styles.voiceActionIcon} aria-hidden="true">{isListening ? "■" : "●"}</span>
-            <strong>{isListening ? "Parar gravação" : "Toque para falar"}</strong>
-            <small>{isListening ? "Estamos ouvindo você" : "O áudio não será guardado"}</small>
+            <strong>{isTranscribing ? "Transcrevendo…" : isListening ? "Parar gravação" : "Toque para falar"}</strong>
+            <small>{isListening ? "Estamos ouvindo você" : isTranscribing ? "Aguarde o texto aparecer" : "O áudio não será guardado"}</small>
           </button>
           <label htmlFor={`${formId}-transcript`}>
             {speechUnavailable ? "Escreva o que aconteceu" : "O que entendemos da sua fala"}
@@ -375,7 +366,7 @@ export function PlanAccess({ title, operation, dataset, onReplan }: PlanAccessPr
               placeholder="Ex.: choveu forte hoje e não dá para entrar no talhão T-01."
             />
           </label>
-          <button type="button" className={styles.primaryAction} onClick={reviewRecording}>
+          <button type="button" className={styles.primaryAction} onClick={reviewRecording} disabled={isListening || isTranscribing}>
             Conferir o que foi entendido →
           </button>
         </div>
